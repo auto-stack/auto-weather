@@ -1,0 +1,56 @@
+{
+  "repository": "auto-weather",
+  "date": "2026-10-03",
+  "sources": [
+    {
+      "repo": "auto-lang",
+      "commit": "17292c07e792e80d4e4da5495fc3fc2917e8aa1e",
+      "path": "examples/ui/014-weather",
+      "primary": true,
+      "fileCount": 6,
+      "pacFields": {
+        "name": "weather",
+        "version": "2.0.0",
+        "scene": "ui",
+        "render": "vue",
+        "title": "Weather",
+        "title_zh": "天气",
+        "window": "960x680",
+        "desktop": "true"
+      },
+      "files": [
+        {
+          "sourcePath": "examples/ui/014-weather/README.md",
+          "path": "README.md",
+          "sha256": "0b3425512b19f5cb0f5b5326ab37332a4befdcf18f933589d19c16266d28ad9b"
+        },
+        {
+          "sourcePath": "examples/ui/014-weather/pac.at",
+          "path": "pac.at",
+          "sha256": "448deb66cb09c4c52b5d9d74c230b7100a42bbea1bdc684bdbd58c046b22c1e2"
+        },
+        {
+          "sourcePath": "examples/ui/014-weather/src/front/app.at",
+          "path": "src/front/app.at",
+          "sha256": "8ba0fc1dcedd9ea44ab633ab69942c55b10374e58cde6252d1464bbb262770de"
+        },
+        {
+          "sourcePath": "examples/ui/014-weather/src/front/types.at",
+          "path": "src/front/types.at",
+          "sha256": "f95e759791a8257bade3366513601c09d154a212e0a480ed98c4ac26388329b6"
+        },
+        {
+          "sourcePath": "examples/ui/014-weather/src/front/weather_data.at",
+          "path": "src/front/weather_data.at",
+          "sha256": "4cb2c1d7497689bf1a8a226a2fca623d3e1acac1b991f14781d29c6e2735c4c1"
+        },
+        {
+          "sourcePath": "examples/ui/014-weather/tests/vm_smoke.py",
+          "path": "tests/vm_smoke.py",
+          "sha256": "16870aaa32757da85abaeacb07cea4f89fa54a8e0cbddaabd3b1f399c20be0ab"
+        }
+      ]
+    }
+  ],
+  "note": "Exact committed source snapshots; packaging changes follow in a separate commit. References are not additional installed apps."
+}
