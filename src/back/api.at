@@ -1,9 +1,11 @@
-// api.at — 014-weather 后端天气代理（v0.6-dev 真实数据第一条切片）
+// api.at — 014-weather 后端天气代理（v0.6-dev）
+#[script]
 //
-// 前端只打本地 /api/weather/report；本文件代理 Open-Meteo（免注册免 key，
-// 非商用免费档）取实时 + 24h + 5日，WMO 天气码映射为本 app 的
-// condition/中文/图标三件套。失败一律 ok:false + 错误串，前端保留
-// weather_data.at 演示样本兜底（降级契约与 027-file-manager rev7 同构）。
+// PLAN-001：城市搜索与多城市管理（PLAN-001，分支 plan-001-dev）。
+// 前端只打本地 /api/weather/*；本文件代理 Open-Meteo（免注册免 key，
+// 非商用免费档）：forecast（实时+24h+5日）、air-quality（AQI）、
+// geocoding（城市搜索）。失败一律 ok:false + 错误串，前端保留演示样本
+// 兜底（降级契约与 027-file-manager rev7 同构）。
 //
 // QWeather 路线：用户控制台的自定义 API Host + Key ID 已实证只认新平台
 // JWT（Bearer），Key ID 本身不是 token；纯 .at 侧仅有 sha256/hmac
@@ -11,20 +13,22 @@
 // 待 auto-lang crypto 面或外部 token 服务落地后在此文件加第二个 provider
 // （WEATHER_PROVIDER 分支，私钥经 env 注入、严禁入库）。
 //
-// ⚠ VM 轨实证配方（kanban/027/os-config 探针口径，2026-10-04 本仓实测）：
+// ⚠ VM 轨实证配方（2026-10-04 本仓实测，见 docs/design/weather-v2.md §6）：
 //   - 结构纪律（027 rev7）：#[api] 端点体恒 thin——api_gen 内联面无法
 //     转译 http/JsonValue，胖体会让 rust 后端编译错；thin 体落 Default
 //     桩（Vue 轨演示数据），VM merged 会话整文件执行 impl_*（真数据面）；
-//   - json.parse 结果只认**点访问/for-in/""+ 强转**（kanban boards_registry
-//     实证）：.get()/.type()/.as_number() 等方法表在该 Value 上不存在
-//     （CALL_SPEC 实证）；原始 JSON 文本另有 json.get/k 文本工具链可备用；
-//   - 平行数组（Open-Meteo hourly/daily 形态）拆两遍 for-in 预生成
-//     []str / []int 真列表，再按计数器 .get(i) 对齐（真列表 .get/.len
-//     是 auto-term 实证面；parse 结果上禁用 len（F-8 语义缺陷））；
+//   - json.parse 结果只认**点访问/for-in/""+ 强转**：.get()/.type() 等
+//     方法表不存在（CALL_SPEC 实证）；原始 JSON 文本另有 json.get 文本
+//     工具链可备用；
+//   - 平行数组（Open-Meteo 响应形态）拆两遍 for-in 预生成真列表，再按
+//     计数器 .get(i) 对齐（parse 结果上禁用 len，F-8 语义缺陷）；
+//   - JSON float 字段经 let 绑定后直接 as int 读到装箱垃圾——经算术去
+//     装箱（f2i 的 f + 0.0）或经 typed fn 参数；
+//   - 坐标全链路透传 2dp 文本（fmt_latlon 全整数运算），避免 float→str
+//     转换面缺失；城市 id = lat_lon；
 //   - fn 模块内不 `use auto.str`（VG1）；字符串拼接不跨行 `+` 续行；
 //   - 数组不跨 fn 边界传参（VG13），全部就地构建返回；
-//   - cast 操作数是 a op b 复合表达式时 a2r 丢内层括号（jade DEBTS 013），
-//     先 let 中转变量再 as int；
+//   - cast 复合表达式 a2r 丢内层括号（jade DEBTS 013）→ let 中转变量；
 //   - http 用便捷函数 http.get（非 builder 链，规避旧状态污染问题）。
 
 pub type HourPoint = {
@@ -65,7 +69,27 @@ pub type ReportOut = {
     daily: []DayPoint
 }
 
-// ── 城市坐标表（前端 city_id → Open-Meteo 纬经度，2 位小数）──
+// PLAN-001：搜索/城市列表契约——平行 str 数组（前端索引循环物化）
+pub type SearchOut = {
+    ok: bool
+    error: str
+    ids: []str
+    names: []str
+    subs: []str
+    lats: []str
+    lons: []str
+}
+
+pub type CityListOut = {
+    ok: bool
+    error: str
+    ids: []str
+    names: []str
+    lats: []str
+    lons: []str
+}
+
+// ── 城市坐标表（内置城市 id → Open-Meteo 纬经度，2 位小数）──
 fn coords_for(city str) str {
     if city == "beijing" { return "39.90,116.40" }
     if city == "shanghai" { return "31.23,121.47" }
@@ -140,11 +164,29 @@ fn fmt_i(f float) str {
     return (r2 as int).str()
 }
 
-// JSON float 字段经 let 绑定后直接 as int 会读到装箱垃圾（2026-10-04
-// 实测：int 字段无碍，float 字段须先经算术去装箱）——统一走 f2i。
+// JSON float 字段经 let 绑定后直接 as int 会读到装箱垃圾（实测）——
+// 统一走 f2i（+0.0 算术去装箱后截断，非四舍五入；四舍五入用 fmt_i）。
 fn f2i(f float) int {
     let r float = f + 0.0
     return (r as int)
+}
+
+fn pad2(n int) str {
+    if n < 10 { return "0" + n.str() }
+    return n.str()
+}
+
+// 坐标 → 2dp 文本（全整数运算；截断取向与 fmt_latlon 的 round 分开：
+// 这里 v100 先 round 到整百内，再截断拆段）
+fn fmt_latlon(f float) str {
+    let v100 int = f2i(f * 100.0 + 0.5)
+    let ip int = v100 / 100
+    var fp int = v100 - ip * 100
+    if fp < 0 { fp = 0 - fp }
+    if ip < 0 {
+        return "-" + ((0 - ip)).str() + "." + pad2(fp)
+    }
+    return ip.str() + "." + pad2(fp)
 }
 
 fn temp_s(f float) str {
@@ -187,6 +229,12 @@ fn weekday_zh(ds str) str {
     return names[wk]
 }
 
+// os-config 配方：JSON 字符串值转义
+fn quote_json(s str) str {
+    let esc = s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "")
+    return "\"" + esc + "\""
+}
+
 // GET 文本；传输异常由调用方 try/catch（PLAN-712 T-17 语义）
 fn get_text(url str) str {
     let res = http.get(url)
@@ -196,13 +244,222 @@ fn get_text(url str) str {
     return res.body()
 }
 
-/// GET /api/weather/report?city=<city_id> — 全量天气报告
+// ── PLAN-001：城市搜索（Open-Meteo Geocoding）──
+fn impl_search(q str) SearchOut {
+    var out SearchOut = SearchOut {
+        ok: false,
+        error: "",
+        ids: [],
+        names: [],
+        subs: [],
+        lats: [],
+        lons: []
+    }
+    try {
+        // q 直接透传 UTF-8 原始串（Open-Meteo 接受；encode_query_component
+        // 在 server 模式 VM 上未实证，避开）
+        let url str = "https://geocoding-api.open-meteo.com/v1/search?name=" + q + "&count=8&language=zh&format=json"
+        let raw str = get_text(url)
+        if raw == "" {
+            out.error = "geocode request failed"
+            return out
+        }
+        let v = json.parse(raw)
+        if v == nil {
+            out.error = "geocode parse failed"
+            return out
+        }
+        let rs = v.results
+        if rs != nil {
+            for r in rs {
+                let nm str = "" + r.name
+                var sub str = "" + r.country
+                let a1 = r.admin1
+                if a1 != nil {
+                    sub = sub + " " + a1
+                }
+                let latf float = r.latitude
+                let lonf float = r.longitude
+                let lats str = fmt_latlon(latf)
+                let lons str = fmt_latlon(lonf)
+                out.ids.push(lats + "_" + lons)
+                out.names.push(nm)
+                out.subs.push(sub)
+                out.lats.push(lats)
+                out.lons.push(lons)
+            }
+        }
+        out.ok = true
+    } catch {
+        if out.error == "" { out.error = "geocode transport error" }
+    }
+    return out
+}
+
+// ── PLAN-001：城市列表持久化（local_data_dir JSON 文件）──
+fn cities_dir() str {
+    return env.local_data_dir() + "/auto-weather"
+}
+
+fn cities_path() str {
+    return cities_dir() + "/cities.json"
+}
+
+// 读文件 → 平行列表；文件缺失返回 ok:true 空表（首次使用）
+fn impl_cities_get() CityListOut {
+    var out CityListOut = CityListOut {
+        ok: false,
+        error: "",
+        ids: [],
+        names: [],
+        lats: [],
+        lons: []
+    }
+    let path str = cities_path()
+    if !file.exists(path) {
+        out.ok = true
+        return out
+    }
+    let raw str = file.read_text(path)
+    if raw == "" {
+        out.ok = true
+        return out
+    }
+    let v = json.parse(raw)
+    if v == nil {
+        out.error = "cities parse failed"
+        return out
+    }
+    let cs = v.cities
+    if cs != nil {
+        for c in cs {
+            out.ids.push("" + c.id)
+            out.names.push("" + c.name)
+            out.lats.push("" + c.lat)
+            out.lons.push("" + c.lon)
+        }
+    }
+    out.ok = true
+    return out
+}
+
+// 读旧表 → 判重 → 追加 → 重写 → 返回新表（VG13：数组不出 fn，全就地）
+fn impl_cities_add(id str, name str, lat str, lon str) CityListOut {
+    var out CityListOut = CityListOut {
+        ok: false,
+        error: "",
+        ids: [],
+        names: [],
+        lats: [],
+        lons: []
+    }
+    let path str = cities_path()
+    if file.exists(path) {
+        let raw str = file.read_text(path)
+        if raw != "" {
+            let v = json.parse(raw)
+            if v != nil {
+                let cs = v.cities
+                if cs != nil {
+                    for c in cs {
+                        let cid str = "" + c.id
+                        out.ids.push(cid)
+                        out.names.push("" + c.name)
+                        out.lats.push("" + c.lat)
+                        out.lons.push("" + c.lon)
+                        if cid == id {
+                            out.ok = true
+                            out.error = ""
+                            return out
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out.ids.push(id)
+    out.names.push(name)
+    out.lats.push(lat)
+    out.lons.push(lon)
+    var txt str = "{\"cities\":["
+    var i int = 0
+    while i < out.ids.len() {
+        if i != 0 { txt = txt + "," }
+        txt = txt + "{\"id\":" + quote_json(out.ids.get(i)) + ",\"name\":" + quote_json(out.names.get(i)) + ",\"lat\":" + quote_json(out.lats.get(i)) + ",\"lon\":" + quote_json(out.lons.get(i)) + "}"
+        i = i + 1
+    }
+    txt = txt + "]}"
+    file.create_dir(cities_dir())
+    let w int = file.write_text(path, txt)
+    if w != 0 {
+        out.error = "persist write failed"
+        return out
+    }
+    out.ok = true
+    return out
+}
+
+/// GET /api/weather/search?q= — 城市搜索（8 条，中文）
+#[api(method = "GET", path = "/api/weather/search")]
+pub fn weather_search(q str) SearchOut {
+    return impl_search(q)
+}
+
+/// GET /api/weather/cities — 自定义城市列表
+#[api(method = "GET", path = "/api/weather/cities")]
+pub fn cities_get() CityListOut {
+    return impl_cities_get()
+}
+
+/// POST /api/weather/cities — 添加自定义城市（body: id/name/lat/lon）
+#[api(method = "POST", path = "/api/weather/cities")]
+pub fn cities_add(id str, name str, lat str, lon str) CityListOut {
+    return impl_cities_add(id, name, lat, lon)
+}
+
+/// GET /api/weather/report?city=<内置 city_id> — 全量天气报告
 #[api(method = "GET", path = "/api/weather/report")]
 pub fn weather_report(city str) ReportOut {
     return impl_report(city)
 }
 
+/// GET /api/weather/report_at?lat=<2dp>&lon=<2dp> — 任意坐标天气报告
+#[api(method = "GET", path = "/api/weather/report_at")]
+pub fn weather_report_at(lat str, lon str) ReportOut {
+    return impl_report_ll(lat, lon)
+}
+
 fn impl_report(city str) ReportOut {
+    let coords str = coords_for(city)
+    if coords == "" {
+        var o ReportOut = ReportOut {
+            ok: false,
+            error: "unknown city: " + city,
+            source: "open-meteo",
+            condition: "partly",
+            cond_zh: "多云",
+            icon: "⛅",
+            temp: "23°",
+            feels: "25°",
+            humidity: "65%",
+            wind: "12 km/h",
+            wind_dir: "",
+            pressure: "1012 hPa",
+            visibility: "12 km",
+            uv: "中等",
+            aqi: "—",
+            aqi_level: "—",
+            updated_at: "--:--",
+            hourly: [],
+            daily: []
+        }
+        return o
+    }
+    let ll = coords.split(",")
+    return impl_report_ll(ll[0], ll[1])
+}
+
+fn impl_report_ll(lat str, lon str) ReportOut {
     var out ReportOut = ReportOut {
         ok: false,
         error: "unknown error",
@@ -224,13 +481,7 @@ fn impl_report(city str) ReportOut {
         hourly: [],
         daily: []
     }
-    let coords str = coords_for(city)
-    if coords == "" {
-        out.error = "unknown city: " + city
-        return out
-    }
-    let ll = coords.split(",")
-    let url str = "https://api.open-meteo.com/v1/forecast?latitude=" + ll[0] + "&longitude=" + ll[1] + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,uv_index,visibility&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&wind_speed_unit=kmh&timezone=auto"
+    let url str = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,uv_index,visibility&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&wind_speed_unit=kmh&timezone=auto"
     try {
         let raw str = get_text(url)
         if raw == "" {
@@ -355,7 +606,7 @@ fn impl_report(city str) ReportOut {
 
     // ── AQI：独立软失败（air-quality API 挂不影响主报文）──
     try {
-        let qa str = get_text("https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + ll[0] + "&longitude=" + ll[1] + "&current=us_aqi")
+        let qa str = get_text("https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + lat + "&longitude=" + lon + "&current=us_aqi")
         if qa != "" {
             let qv = json.parse(qa)
             if qv != nil {
