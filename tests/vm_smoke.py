@@ -159,6 +159,28 @@ def find_clickable_for_label(snapshot: str, label: str) -> str | None:
     return None
 
 
+def find_input(snapshot: str) -> str | None:
+    """Locate the first input element id in the snapshot."""
+    pattern_id = re.compile(r"#(aura_\d+|vnode_\d+)")
+    current_id = None
+    current_block: list[str] = []
+    for line in snapshot.splitlines():
+        m = pattern_id.search(line)
+        if m:
+            if current_id and current_block:
+                text = "\n".join(current_block)
+                if "input" in text.lower():
+                    return current_id
+            current_id = m.group(1)
+            current_block = [line]
+        elif current_id:
+            current_block.append(line)
+    if current_id and current_block:
+        if "input" in "\n".join(current_block).lower():
+            return current_id
+    return None
+
+
 def main() -> int:
     if not Path(AUTO_BIN).exists():
         print(f"ERROR: auto binary not found: {AUTO_BIN}")
@@ -383,6 +405,65 @@ def main() -> int:
         except Exception as e:
             results.append(("data source note", False))
             print(f"  FAIL: data note {e}")
+            failed += 1
+
+        print("\n=== T7 city search & custom city (PLAN-001) ===")
+        try:
+            stc = mcp.state("custom_names")
+            print(f"  custom pre-state: {stc[:200]}")
+
+            snap = mcp.snapshot()
+            iid = find_input(snap)
+            print(f"  input element: {iid}")
+            if not iid:
+                raise RuntimeError("search input not found")
+            mcp.call("autoui_type", element_id=iid, text="青岛")
+            time.sleep(0.6)
+            bid = find_clickable_for_label(mcp.snapshot(), "搜索")
+            print(f"  search button: {bid}")
+            if not bid:
+                raise RuntimeError("search button not found")
+            mcp.click(bid)
+            time.sleep(4.0)
+            st_q = mcp.state("search_q", "search_err", "search_names")
+            print(f"  search state: {st_q[:400]}")
+            snap2 = mcp.snapshot()
+            ok_qd = "青岛" in snap2
+            results.append(("search results contain 青岛", ok_qd))
+            print(f"  {'PASS' if ok_qd else 'FAIL'}: search 青岛 results")
+            if not ok_qd:
+                failed += 1
+
+            hid = find_clickable_for_label(snap2, "青岛")
+            print(f"  first hit element: {hid}")
+            if not hid:
+                raise RuntimeError("no search hit clickable")
+            mcp.click(hid)
+            time.sleep(3.0)
+            st_add = mcp.state("custom_names")
+            print(f"  after add: {st_add[:250]}")
+            ok_add = "青岛" in st_add
+            results.append(("AddHit persists 青岛", ok_add))
+            print(f"  {'PASS' if ok_add else 'FAIL'}: custom city added")
+            if not ok_add:
+                failed += 1
+
+            cid = find_clickable_for_label(mcp.snapshot(), "青岛")
+            print(f"  custom pill element: {cid}")
+            if not cid:
+                raise RuntimeError("no custom pill clickable")
+            mcp.click(cid)
+            time.sleep(5.0)
+            st_sel = mcp.state("city_zh", "temp", "source_label")
+            print(f"  after select: {st_sel[:300]}")
+            ok_sel = "青岛" in st_sel and "Open-Meteo" in st_sel
+            results.append(("SelectCustom 青岛 real data", ok_sel))
+            print(f"  {'PASS' if ok_sel else 'FAIL'}: custom city real weather")
+            if not ok_sel:
+                failed += 1
+        except Exception as e:
+            results.append(("T7 search/custom city", False))
+            print(f"  FAIL: T7 {e}")
             failed += 1
 
     finally:

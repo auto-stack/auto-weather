@@ -23,6 +23,9 @@ auto run -r vm
   非商用免费档），覆盖 10 个内置城市的实时天气 + 24 小时 + 5 日预报 + AQI。
 - **降级**：后端请求失败（断网/超时/API 异常）时 `ok:false`，前端全场保留
   `weather_data.at` 演示样本，界面注记保持「演示数据 · 非实时气象」。
+- **城市搜索**（PLAN-001）：横屏布局顶部输入任意城市（中文/拼音）→ 点击
+  结果添加为自定义城市 pill，点击 pill 查看真实天气；列表经后端持久化到
+  `local_data_dir`，跨启动保留。
 - **QWeather**：自定义 API Host 已实证只认新平台 JWT
   （`Authorization: Bearer <JWT>`），Key ID 本身不是 token；纯 `.at` 侧
   暂无 Ed25519/ES256 签名原语，待 auto-lang crypto 面或外部 token 服务
