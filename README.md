@@ -1,37 +1,24 @@
-# 014-weather — Weather Dashboard（PLAN-660）
+# auto-weather
 
-天气仪表盘：**横屏（网页/桌面）优先**，竖屏布局可切换。`pac.at` 声明固定
-初窗 `window: "960x680"`——**不用** `window: "fit"`（Plan 512：fit +
-`lg:`/`max-w` 系在 iced 量测不稳，可能把窗量成极小、UI「只剩一张卡」）；
-宽度全用固定 Tailwind 刻度（Hero `w-64`、外壳 `w-96` 系），整 app 套一层
-card 框（`app_frame`）。数据为内置演示样本。
+天气，使用 AutoLang / AutoUI 开发的独立应用。
 
-## Layout modes
+本仓是首批产品源码基线；当前能力以导入版本为准，仓库描述中的产品方向不表示全部已实现。
 
-| 模式 | 用途 | 说明 |
-|---|---|---|
-| `landscape`（默认） | 网页 / 桌面 | 左 Hero + 右「预报 Tab + 指标」 |
-| `portrait` | 未来手机版 | 移动密度卡片；预报同样 Tab 化 |
+## 运行
 
-预报区：**24小时 / 5日** Tab 互斥；五日卡与小时卡同构（最高/最低两行，
-今天高亮）。
+安装对应版本的 `auto` CLI 后，从本仓根执行：
 
-## Concepts
-
-- **窗口尺寸** — 固定 `960x680`（r7；fit 弃用缘由见 pac.at 注记）
-- **主题契约** — `dark_mode` / `accent_color`（Plan 458）
-- **滚动** — AutoUI `scroll` → Vue `ScrollArea`；scroll 直包 `row`，
-  勿外套 `container`（max-w-7xl 注入会致视口塌陷）
-- **Hero** — view 内按 condition 的 if/else class（勿绑到 `style:`）
-- **城市** — 10 城 pill；**toggle hover** 选中态必须自带 `hover:bg-primary/90`
-
-## How to Run
-
-```bash
-cd examples/ui/014-weather
-auto build
-auto run                 # 960x680 窗 + 横屏
-auto run --theme light
+```sh
+auto run
 auto run -r vm
-# 冒烟：C:\Python314\python.exe tests/vm_smoke.py
 ```
+
+前端端口：`17816`。
+
+## 来源与组合
+
+来源提交、路径与文件 hash 见 `SOURCE-IMPORT.json`。首次导入提交保留在 `source-sync` 分支；完整 v0.5 恢复后从该基线导入差异，再与产品开发线合并。
+
+AutoOS 通过 [`apps/014-weather`](https://github.com/auto-stack/auto-os/tree/v0.6-dev/apps/014-weather) submodule 固定本仓版本；教学 Demo 保留在来源仓。
+
+已有测试随源导入；端口与平台相关测试需要按本仓配置准备运行环境。安装/启动与双端完整功能验收是不同检查项。
