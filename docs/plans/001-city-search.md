@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-001
-status: executing
+status: execution_done
 feature_name: 城市搜索与多城市管理
 author: [agent]
 created_at: 2026-10-04T04:00:00Z
-updated_at: 2026-10-04T04:00:00Z
+updated_at: 2026-10-04T05:30:00Z
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 6
 supersedes_spec_components: []
 new_spec_components: [docs/specs/weather-app.md#F-P0-01]
@@ -37,7 +37,7 @@ touched_goals: [F-P0-01]
 遵循 `docs/design/weather-v2.md`：后端代理 + 平行 str 数组契约 + 后端
 JSON 文件持久化（`Env.local_data_dir()/auto-weather/cities.json`）。
 前端 pill 条 = 既有 10 内置城（硬编码渲染不动）+ 尾部动态渲染
-`.custom_cities`（for + onclick，风险与回退见 T-05）。
+`.custom_pills`（for + onclick，风险与回退见 T-05）。
 
 ## 3. 技术栈
 
@@ -100,6 +100,13 @@ AutoLang `.at`（`#[api]`/widget/VM merged）、Open-Meteo Geocoding API、
 - **风险登记**：视图 for + onclick 携带循环变量实参在 App widget 内无直接
   先例（VG16 之祸在 store 语境）。回退方案：onclick 无参 `.AddHit0..7` 固定
   8 槽位（if 渲染守卫）——T-05 验证时若 MCP 点击后参数为空即触发回退。
+- **实施调整（已记录）**：① `--server=vm` 模式存在 E5501 脚本门（nil 字面量
+  信号），api.at 首行加 `#[script]` 标注解决，merged 模式回归实证无影响；
+  脚本模式严格 let 不可重赋值（fmt_latlon 的 fp 改 var）。②
+  `url.encode_query_component` 在 server 模式 VM 上非可用面，搜索 q 改
+  原始 UTF-8 透传（Open-Meteo 接受）。③ 视图 for + onclick 循环实参
+  **实测通过**（T7 MCP 点击闭环），回退方案未启用。④ 竖屏布局未加搜索区
+  （归 PLAN-004 移动端打磨）。
 
 ### 5.3 测试（tests/vm_smoke.py）
 
@@ -111,8 +118,8 @@ AutoLang `.at`（`#[api]`/widget/VM merged）、Open-Meteo Geocoding API、
 
 | delta_id | op | target | before/after | rationale | AC |
 |---|---|---|---|---|---|
-| SD-01 | modify | docs/specs/weather-app.md | F-P0-01 行尾标注"PLAN-001 达成（城市增/切/持久化；删/排序归 PLAN-002）" | 账实对齐 | AC-05 |
-| SD-02 | modify | README.md | 运行节补"城市搜索/自定义城市"用法一行 | 用户可见能力 | AC-05 |
+| SD-01 | modify | docs/specs/weather-app.md | F-P0-01 行尾标注"PLAN-001 达成（删/排序归 PLAN-002）" | 账实对齐 | AC-05 |
+| SD-02 | modify | README.md | 数据节补"城市搜索/自定义城市"用法 | 用户可见能力 | AC-05 |
 
 ## 6. 测试设计
 
@@ -123,28 +130,29 @@ AutoLang `.at`（`#[api]`/widget/VM merged）、Open-Meteo Geocoding API、
 
 ## 7. 验收标准
 
-| ID | 标准 | 验证 |
-|---|---|---|
-| AC-01 | `search?q=青岛` 在 VM merged 下 ok:true 且 names 含"青岛"，坐标为 2dp 文本 | curl 直探 + T7 |
-| AC-02 | `cities_add` 后 `cities_get` 返回该城；重启进程后仍在（文件持久化） | curl 直探（两轮进程） |
-| AC-03 | 选中自定义城市后 model 的 city_zh/temp/updated_at 来自 report_at 真实数据 | T7 断言 |
-| AC-04 | `vm_smoke.py` 全绿（18 旧 + T7） | python tests/vm_smoke.py |
-| AC-05 | SD-01/SD-02 增量落地 | 文件检查 |
+| ID | 标准 | 验证 | 结果 |
+|---|---|---|---|
+| AC-01 | `search?q=青岛` 在 VM merged 下 ok:true 且 names 含"青岛"，坐标为 2dp 文本 | T7 search_names=["青岛",…]+快照渲染 | **pass**（worktree vm_smoke 21/21） |
+| AC-02 | `cities_add` 后 `cities_get` 返回该城；重启进程后仍在（文件持久化） | 第二轮 smoke pre-state `custom_names:["青岛"]` | **pass**（wt-smoke5 实证） |
+| AC-03 | 选中自定义城市后 model 的 city_zh/temp/updated_at 来自 report_at 真实数据 | T7 SelectCustom 断言 city_zh=青岛+Open-Meteo | **pass** |
+| AC-04 | `vm_smoke.py` 全绿（18 旧 + T7） | python tests/vm_smoke.py ×2 全绿（21/21） | **pass** |
+| AC-05 | SD-01/SD-02 增量落地 | commit f7eb776 文件检查 | **pass** |
 
 ## 8. 执行步骤
 
-- [ ] T-01 后端 search 端点 + SearchOut + fmt_latlon（AC-01）
-  - 验证：`auto run --server=vm` + `curl '…/api/weather/search?q=青岛'` → ok:true
-- [ ] T-02 后端 cities_get/cities_add + cities_path + quote_json（AC-02）
-  - 验证：curl add→get→重启 server→get 仍在
-- [ ] T-03 后端 report_at + impl_report 重构（AC-03 前置）
-  - 验证：curl `report_at?lat=36.07&lon=120.38` → ok:true 且 temp 非 mock 默认
-- [ ] T-04 前端搜索区（input/按钮/结果列表/DoSearch/AddHit）（AC-01/03）
-  - 验证：T7 前半段
-- [ ] T-05 前端动态 pill + SelectCustom + Init 预填（AC-03）
-  - 验证：T7 后半段；若循环实参失效 → 回退 8 槽位方案并记录调整
-- [ ] T-06 vm_smoke T7 + SD-01/SD-02 + 全量回归（AC-04/05）
-  - 验证：`python tests/vm_smoke.py` 全绿 ×2
+- [x] T-01 后端 search 端点 + SearchOut + fmt_latlon（AC-01）
+  - 验证：`auto run --server=vm` 直探（server 模式调通后 merged T7 复验）；
+    证据：T7 search_names 非空（`f2i/fmt_latlon` 全整数路径，merged 21/21）
+- [x] T-02 后端 cities_get/cities_add + cities_path + quote_json（AC-02）
+  - 验证：cities_get 空表瞬回（server 直探）+ 第二轮 smoke pre-state 持久化实证
+- [x] T-03 后端 report_at + impl_report 重构（AC-03 前置）
+  - 验证：server 直探 青岛 18°C/晴/风11km/h（真实数据，亚秒返回）
+- [x] T-04 前端搜索区（input/按钮/结果列表/DoSearch/AddHit）（AC-01/03）
+  - 验证：T7 前半段（录入→搜索→结果渲染，autoui_type）
+- [x] T-05 前端动态 pill + SelectCustom + Init 预填（AC-03）
+  - 验证：T7 后半段；循环实参实测通过，回退方案未启用
+- [x] T-06 vm_smoke T7 + SD-01/SD-02 + 全量回归（AC-04/05）
+  - 验证：`python tests/vm_smoke.py` 21/21 ×2（worktree plan-001-dev @ f7eb776）
 
 依赖：T-01→T-04；T-02→T-05；T-03→T-05；T-06 最后。
 
@@ -153,7 +161,13 @@ AutoLang `.at`（`#[api]`/widget/VM merged）、Open-Meteo Geocoding API、
 - `stage: new | PLAN-001 | rev 1 | outcome: pass | next: work`——授权内
   （用户已批 new+work），任务覆盖 AC-01..05 与 SD-01/02，路径/命令已对照
   仓库核实（src/back/api.at、src/front/app.at、tests/vm_smoke.py 均在册）。
+- `stage: work | PLAN-001 | rev 1 | outcome: pass | code_commit: f7eb776
+  (on plan-001-dev, base 327bcc7) | task_ids: T-01..T-06 | evidence:
+  worktree vm_smoke 21/21 ×2（wt-smoke4/5 全绿；AC-02 跨重启 pre-state 实证）;
+  server 模式直探 cities_get/report_at 通过 | blockers: 无（--server=vm 下
+  search 曾现 encode 原生件缺失，已改 UTF-8 透传并实证） | next: review`——
+  所有任务与 AC 映射已核销，变更已提交，worktree 保留待复审。
 
 ## 10. 待澄清事项
 
-- 无（删除/排序、搜索历史、GPS 已明确归入后续计划）。
+- 无（删除/排序、搜索历史、GPS 已明确归入后续计划；竖屏搜索区归 PLAN-004）。
