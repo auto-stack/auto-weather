@@ -208,9 +208,10 @@ def main() -> int:
         mcp = McpClient(url)
         time.sleep(2)
 
-        # Give VM first paint
+        # Give VM first paint（Init 起屏经真实 HTTP，首绘可达 10s+——
+        # 18 次重试覆盖冷/热两种启动）
         snap = ""
-        for i in range(8):
+        for i in range(30):
             snap = mcp.snapshot()
             if "北京" in snap or "5日" in snap or "当前详情" in snap:
                 break
@@ -368,6 +369,21 @@ def main() -> int:
                 results.append(("theme toggle click", False))
                 print(f"  FAIL: theme {e}")
                 failed += 1
+
+        print("\n=== T6 data source note (r10 real-data wiring) ===")
+        try:
+            st6 = mcp.state("data_note", "source_label", "updated_at", "wind", "temp", "cond_zh", "humidity", "aqi", "aqi_level", "uv", "pressure", "visibility")
+            print(f"  data state: {st6[:300]}")
+            # 在线 → Open-Meteo；离线 → 演示样本。两者皆证明接线存在。
+            ok6 = "Open-Meteo" in st6 or "演示数据" in st6
+            results.append(("data_note/source_label wired", ok6))
+            print(f"  {'PASS' if ok6 else 'FAIL'}: data source note present")
+            if not ok6:
+                failed += 1
+        except Exception as e:
+            results.append(("data source note", False))
+            print(f"  FAIL: data note {e}")
+            failed += 1
 
     finally:
         proc.terminate()

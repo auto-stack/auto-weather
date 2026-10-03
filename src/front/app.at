@@ -52,6 +52,11 @@ style aqi_good = "text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-
 style aqi_warn = "text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 font-medium"
 style aqi_mid = "text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium"
 
+// r10（v0.6-dev 真实数据）：后端代理 Open-Meteo。#[api] 调用在 VM merged
+// 轨进程内执行；Vue 轨经生成客户端走 back_port 17817。后端不可达/失败时
+// r.ok=false，全场保留下方演示样本（渐进降级，与 027-file-manager 同构）。
+use back.api: weather_report
+
 widget App {
     msg {
         SelectCity(str),
@@ -87,6 +92,9 @@ widget App {
         var pressure str = "1012 hPa"
         var visibility str = "12 km"
         var updated_at str = "14:30"
+        // r10：数据来源注记（实时成功 → Open-Meteo；失败保演示文案）
+        var data_note str = "演示数据 · 非实时气象"
+        var source_label str = "演示样本"
         var refreshing bool = false
         var hourly = [
             { time: "现在", icon: "⛅", temp: "23°", now: true },
@@ -394,14 +402,14 @@ widget App {
                                         col {
                                             style: metric_card
                                             text "数据" { style: metric_label }
-                                            text "演示样本" { style: "text-xs text-muted-foreground" }
+                                            text .source_label { style: "text-xs text-muted-foreground" }
                                         }
                                     }
                                 }
                             }
                         }
 
-                        text "演示数据 · 非实时气象" { style: "text-center text-[10px] text-muted-foreground/70" }
+                        text .data_note { style: "text-center text-[10px] text-muted-foreground/70" }
 
                         style: "w-full gap-3"
                     }
@@ -506,7 +514,7 @@ widget App {
                                     col {
                                         style: metric_card
                                         text "数据" { style: metric_label }
-                                        text "演示样本" { style: "text-xs text-muted-foreground" }
+                                        text .source_label { style: "text-xs text-muted-foreground" }
                                     }
                                 }
                             }
@@ -579,7 +587,7 @@ widget App {
                                 }
                             }
 
-                            text "演示数据 · 非实时气象" { style: "text-center text-[10px] text-muted-foreground/70" }
+                            text .data_note { style: "text-center text-[10px] text-muted-foreground/70" }
 
                             style: "w-full max-w-md mx-auto gap-3"
                         }
@@ -632,6 +640,27 @@ widget App {
                 { day: "周五", icon: "⛅", cond: "多云", tmin: "19°", tmax: "27°" }
             ]
             .updated_at = "14:30"
+            // r10：起屏拉一次真实数据；失败静默保留上方演示样本
+            let r = weather_report(.city_id)
+            if r.ok {
+                .condition = r.condition
+                .cond_zh = r.cond_zh
+                .icon = r.icon
+                .temp = r.temp
+                .feels = r.feels
+                .humidity = r.humidity
+                .wind = r.wind
+                .uv = r.uv
+                .aqi = r.aqi
+                .aqi_level = r.aqi_level
+                .pressure = r.pressure
+                .visibility = r.visibility
+                .updated_at = r.updated_at
+                .hourly = r.hourly
+                .daily = r.daily
+                .data_note = "实时数据 · Open-Meteo"
+                .source_label = "Open-Meteo"
+            }
         }
 
         .SetLayout(mode) -> {
@@ -814,16 +843,51 @@ widget App {
                 { day: "周四", icon: "🌧️", cond: "小雨", tmin: .temp, tmax: .temp },
                 { day: "周五", icon: "⛅", cond: "多云", tmin: .temp, tmax: .temp }
             ]
+            // r10：切城后拉真实数据；失败保留上方该城演示样本
+            let r = weather_report(id)
+            if r.ok {
+                .condition = r.condition
+                .cond_zh = r.cond_zh
+                .icon = r.icon
+                .temp = r.temp
+                .feels = r.feels
+                .humidity = r.humidity
+                .wind = r.wind
+                .uv = r.uv
+                .aqi = r.aqi
+                .aqi_level = r.aqi_level
+                .pressure = r.pressure
+                .visibility = r.visibility
+                .updated_at = r.updated_at
+                .hourly = r.hourly
+                .daily = r.daily
+                .data_note = "实时数据 · Open-Meteo"
+                .source_label = "Open-Meteo"
+            }
         }
 
         .Refresh -> {
             .refreshing = true
-            if .updated_at == "14:30" {
-                .updated_at = "14:31"
-            } else if .updated_at == "14:31" {
-                .updated_at = "14:32"
-            } else {
-                .updated_at = "14:30"
+            // r10：真实刷新（Open-Meteo）；失败时全场保留现状（含演示样本）
+            let r = weather_report(.city_id)
+            if r.ok {
+                .condition = r.condition
+                .cond_zh = r.cond_zh
+                .icon = r.icon
+                .temp = r.temp
+                .feels = r.feels
+                .humidity = r.humidity
+                .wind = r.wind
+                .uv = r.uv
+                .aqi = r.aqi
+                .aqi_level = r.aqi_level
+                .pressure = r.pressure
+                .visibility = r.visibility
+                .updated_at = r.updated_at
+                .hourly = r.hourly
+                .daily = r.daily
+                .data_note = "实时数据 · Open-Meteo"
+                .source_label = "Open-Meteo"
             }
             .refreshing = false
         }

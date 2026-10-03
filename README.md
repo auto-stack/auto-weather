@@ -13,7 +13,27 @@ auto run
 auto run -r vm
 ```
 
-前端端口：`17816`。
+- 前端端口：`17816`；后端端口：`17817`（v0.6-dev 起，`pac.at` 声明 `api: "rust"`）。
+- 后端为纯 `.at` 代理（`src/back/api.at`）：前端只打本地 `/api/weather/report`，
+  由后端出网取数，VM merged 轨进程内执行，Vue 轨由 `api_gen` 生成服务。
+
+## 数据
+
+- **实时数据**：默认走 [Open-Meteo](https://open-meteo.com/)（免注册免 key，
+  非商用免费档），覆盖 10 个内置城市的实时天气 + 24 小时 + 5 日预报 + AQI。
+- **降级**：后端请求失败（断网/超时/API 异常）时 `ok:false`，前端全场保留
+  `weather_data.at` 演示样本，界面注记保持「演示数据 · 非实时气象」。
+- **QWeather**：自定义 API Host 已实证只认新平台 JWT
+  （`Authorization: Bearer <JWT>`），Key ID 本身不是 token；纯 `.at` 侧
+  暂无 Ed25519/ES256 签名原语，待 auto-lang crypto 面或外部 token 服务
+  落地后作为第二 provider 接入（私钥经 env 注入，严禁入库）。
+
+## 验证
+
+```sh
+python tests/vm_smoke.py   # 需 D:/autostack/auto-lang/target/debug/auto.exe
+```
+
 
 ## 来源与组合
 

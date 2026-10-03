@@ -11,3 +11,10 @@ desktop: "true"
 # 不写死 theme/accent —— 跟随宿主/CLI；应用内 ToggleTheme 翻转 dark_mode。
 # r8：不声明 dep stylekit —— rust/a2r 轨不解析该导入；hint_text 内联。
 front_port: 17816
+# v0.6-dev 真实数据后端（Open-Meteo 代理，src/back/api.at）。
+# 刻意不声明 api: "rust"：该字段在 VM 轨强制 Rust Axum 分离后端，
+# 而 api_gen 内联面无法转译本后端的 http.get/JsonValue 导航（会落
+# Default 桩或编译错）；不声明则 VM 轨默认 vm+vm merged 进程内执行
+# ——真数据面。Rust/Vue 轨经 resolve_back_api（文件存在性）照常生成
+# 桩后端，构建无碍，数据面暂为演示样本（待 a2r http 面落地再分离）。
+back_port: 17817

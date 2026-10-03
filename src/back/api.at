@@ -1,0 +1,379 @@
+// api.at — 014-weather 后端天气代理（v0.6-dev 真实数据第一条切片）
+//
+// 前端只打本地 /api/weather/report；本文件代理 Open-Meteo（免注册免 key，
+// 非商用免费档）取实时 + 24h + 5日，WMO 天气码映射为本 app 的
+// condition/中文/图标三件套。失败一律 ok:false + 错误串，前端保留
+// weather_data.at 演示样本兜底（降级契约与 027-file-manager rev7 同构）。
+//
+// QWeather 路线：用户控制台的自定义 API Host + Key ID 已实证只认新平台
+// JWT（Bearer），Key ID 本身不是 token；纯 .at 侧仅有 sha256/hmac
+// （stdlib/auto/hash.at），无 Ed25519/ES256 签名原语，JWT 生成不可行——
+// 待 auto-lang crypto 面或外部 token 服务落地后在此文件加第二个 provider
+// （WEATHER_PROVIDER 分支，私钥经 env 注入、严禁入库）。
+//
+// ⚠ VM 轨实证配方（kanban/027/os-config 探针口径，2026-10-04 本仓实测）：
+//   - 结构纪律（027 rev7）：#[api] 端点体恒 thin——api_gen 内联面无法
+//     转译 http/JsonValue，胖体会让 rust 后端编译错；thin 体落 Default
+//     桩（Vue 轨演示数据），VM merged 会话整文件执行 impl_*（真数据面）；
+//   - json.parse 结果只认**点访问/for-in/""+ 强转**（kanban boards_registry
+//     实证）：.get()/.type()/.as_number() 等方法表在该 Value 上不存在
+//     （CALL_SPEC 实证）；原始 JSON 文本另有 json.get/k 文本工具链可备用；
+//   - 平行数组（Open-Meteo hourly/daily 形态）拆两遍 for-in 预生成
+//     []str / []int 真列表，再按计数器 .get(i) 对齐（真列表 .get/.len
+//     是 auto-term 实证面；parse 结果上禁用 len（F-8 语义缺陷））；
+//   - fn 模块内不 `use auto.str`（VG1）；字符串拼接不跨行 `+` 续行；
+//   - 数组不跨 fn 边界传参（VG13），全部就地构建返回；
+//   - cast 操作数是 a op b 复合表达式时 a2r 丢内层括号（jade DEBTS 013），
+//     先 let 中转变量再 as int；
+//   - http 用便捷函数 http.get（非 builder 链，规避旧状态污染问题）。
+
+pub type HourPoint = {
+    time: str
+    icon: str
+    temp: str
+    now: bool
+}
+
+pub type DayPoint = {
+    day: str
+    icon: str
+    cond: str
+    tmin: str
+    tmax: str
+}
+
+// 全扁平标量 + 两个列表（前端 handler 单跳读契约）
+pub type ReportOut = {
+    ok: bool
+    error: str
+    source: str
+    condition: str
+    cond_zh: str
+    icon: str
+    temp: str
+    feels: str
+    humidity: str
+    wind: str
+    wind_dir: str
+    pressure: str
+    visibility: str
+    uv: str
+    aqi: str
+    aqi_level: str
+    updated_at: str
+    hourly: []HourPoint
+    daily: []DayPoint
+}
+
+// ── 城市坐标表（前端 city_id → Open-Meteo 纬经度，2 位小数）──
+fn coords_for(city str) str {
+    if city == "beijing" { return "39.90,116.40" }
+    if city == "shanghai" { return "31.23,121.47" }
+    if city == "guangzhou" { return "23.13,113.26" }
+    if city == "shenzhen" { return "22.54,114.06" }
+    if city == "hangzhou" { return "30.25,120.17" }
+    if city == "chengdu" { return "30.57,104.07" }
+    if city == "xian" { return "34.34,108.94" }
+    if city == "wuhan" { return "30.59,114.31" }
+    if city == "harbin" { return "45.80,126.53" }
+    if city == "sanya" { return "18.25,109.51" }
+    return ""
+}
+
+// ── WMO weather_code → condition / 中文 / 图标 ──
+fn condition_for(code int) str {
+    if code == 0 { return "sunny" }
+    if code == 1 || code == 2 { return "partly" }
+    if code == 3 { return "cloudy" }
+    if code == 45 || code == 48 { return "fog" }
+    if code >= 51 && code <= 67 { return "rain" }
+    if code >= 71 && code <= 77 { return "snow" }
+    if code >= 80 && code <= 82 { return "rain" }
+    if code >= 85 && code <= 86 { return "snow" }
+    if code >= 95 { return "storm" }
+    return "cloudy"
+}
+
+fn cond_zh_for(code int) str {
+    if code == 0 { return "晴" }
+    if code == 1 || code == 2 { return "多云" }
+    if code == 3 { return "阴" }
+    if code == 45 || code == 48 { return "雾" }
+    if code == 51 || code == 53 || code == 55 { return "毛毛雨" }
+    if code == 56 || code == 57 { return "冻毛毛雨" }
+    if code == 61 { return "小雨" }
+    if code == 63 { return "中雨" }
+    if code == 65 { return "大雨" }
+    if code == 66 || code == 67 { return "冻雨" }
+    if code == 71 { return "小雪" }
+    if code == 73 { return "中雪" }
+    if code == 75 { return "大雪" }
+    if code == 77 { return "雪粒" }
+    if code == 80 || code == 81 || code == 82 { return "阵雨" }
+    if code == 85 || code == 86 { return "阵雪" }
+    if code == 95 { return "雷阵雨" }
+    if code == 96 || code == 99 { return "雷阵雨伴冰雹" }
+    return "阴"
+}
+
+fn icon_for(code int) str {
+    if code == 0 { return "☀️" }
+    if code == 1 || code == 2 { return "⛅" }
+    if code == 3 { return "☁️" }
+    if code == 45 || code == 48 { return "🌫️" }
+    if code >= 51 && code <= 67 { return "🌧️" }
+    if code >= 71 && code <= 77 { return "❄️" }
+    if code >= 80 && code <= 82 { return "🌧️" }
+    if code >= 85 && code <= 86 { return "❄️" }
+    if code >= 95 { return "⛈️" }
+    return "☁️"
+}
+
+// ── 格式化助手（标量跨 fn 边界安全）──
+// cast 复合表达式 a2r 丢括号（jade DEBTS 013）→ 先 let 中转变量。
+fn fmt_i(f float) str {
+    if f < 0.0 {
+        let r float = f - 0.5
+        return (r as int).str()
+    }
+    let r2 float = f + 0.5
+    return (r2 as int).str()
+}
+
+// JSON float 字段经 let 绑定后直接 as int 会读到装箱垃圾（2026-10-04
+// 实测：int 字段无碍，float 字段须先经算术去装箱）——统一走 f2i。
+fn f2i(f float) int {
+    let r float = f + 0.0
+    return (r as int)
+}
+
+fn temp_s(f float) str {
+    return fmt_i(f) + "°"
+}
+
+fn uv_level(v float) str {
+    if v < 3.0 { return "弱" }
+    if v < 6.0 { return "中等" }
+    if v < 8.0 { return "强" }
+    if v < 11.0 { return "很强" }
+    return "极强"
+}
+
+fn aqi_level(a int) str {
+    if a <= 50 { return "优" }
+    if a <= 100 { return "良" }
+    if a <= 150 { return "轻度污染" }
+    if a <= 200 { return "中度污染" }
+    if a <= 300 { return "重度污染" }
+    return "严重污染"
+}
+
+fn wind_dir_zh(deg int) str {
+    var dirs = ["北", "东北", "东", "东南", "南", "西南", "西", "西北"]
+    return dirs[((deg + 23) / 45) % 8]
+}
+
+// Sakamoto 星期（0=周日），日期串 "YYYY-MM-DD"
+fn weekday_zh(ds str) str {
+    var names = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+    let p = ds.split("-")
+    if p.len() < 3 { return "" }
+    var y int = (str.to_uint(p[0])) as int
+    let m int = (str.to_uint(p[1])) as int
+    let d int = (str.to_uint(p[2])) as int
+    if m < 3 { y = y - 1 }
+    var t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
+    let wk int = (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7
+    return names[wk]
+}
+
+// GET 文本；传输异常由调用方 try/catch（PLAN-712 T-17 语义）
+fn get_text(url str) str {
+    let res = http.get(url)
+    if res.status() != 200 {
+        return ""
+    }
+    return res.body()
+}
+
+/// GET /api/weather/report?city=<city_id> — 全量天气报告
+#[api(method = "GET", path = "/api/weather/report")]
+pub fn weather_report(city str) ReportOut {
+    return impl_report(city)
+}
+
+fn impl_report(city str) ReportOut {
+    var out ReportOut = ReportOut {
+        ok: false,
+        error: "unknown error",
+        source: "open-meteo",
+        condition: "partly",
+        cond_zh: "多云",
+        icon: "⛅",
+        temp: "23°",
+        feels: "25°",
+        humidity: "65%",
+        wind: "12 km/h",
+        wind_dir: "",
+        pressure: "1012 hPa",
+        visibility: "12 km",
+        uv: "中等",
+        aqi: "—",
+        aqi_level: "—",
+        updated_at: "--:--",
+        hourly: [],
+        daily: []
+    }
+    let coords str = coords_for(city)
+    if coords == "" {
+        out.error = "unknown city: " + city
+        return out
+    }
+    let ll = coords.split(",")
+    let url str = "https://api.open-meteo.com/v1/forecast?latitude=" + ll[0] + "&longitude=" + ll[1] + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,uv_index,visibility&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&wind_speed_unit=kmh&timezone=auto"
+    try {
+        let raw str = get_text(url)
+        if raw == "" {
+            out.error = "forecast request failed"
+            return out
+        }
+        let v = json.parse(raw)
+        if v == nil {
+            out.error = "forecast parse failed"
+            return out
+        }
+        let cur = v.current
+        if cur == nil {
+            out.error = "forecast shape: no current"
+            return out
+        }
+        // 点访问取数（方法表不存在于 parse 结果——见头注）
+        let wc_f float = cur.weather_code
+        out.condition = condition_for((wc_f as int))
+        out.cond_zh = cond_zh_for((wc_f as int))
+        out.icon = icon_for((wc_f as int))
+        out.temp = temp_s(cur.temperature_2m)
+        out.feels = temp_s(cur.apparent_temperature)
+        out.humidity = fmt_i(cur.relative_humidity_2m) + "%"
+        let spd int = f2i(cur.wind_speed_10m)
+        let deg int = f2i(cur.wind_direction_10m)
+        out.wind = spd.str() + " km/h"
+        out.wind_dir = wind_dir_zh(deg)
+        out.pressure = fmt_i(cur.pressure_msl) + " hPa"
+        let vis_m float = cur.visibility
+        let vis_km float = vis_m / 1000.0
+        out.visibility = fmt_i(vis_km) + " km"
+        out.uv = uv_level(cur.uv_index)
+        let ctime str = "" + cur.time
+        if ctime.len() >= 16 {
+            out.updated_at = ctime.sub(11, 16)
+        }
+
+        // ── 24h：平行数组 → 两遍 for-in 预生成真列表，按计数器对齐 ──
+        let hv = v.hourly
+        if hv != nil {
+            var htimes []str = []
+            for t in hv.time {
+                htimes.push("" + t)
+            }
+            var htemps []float = []
+            for t in hv.temperature_2m {
+                htemps.push(t)
+            }
+            var hcodes []int = []
+            for c in hv.weather_code {
+                let cf float = c
+                hcodes.push((cf as int))
+            }
+            let cur_hour str = ctime.sub(11, 13)
+            var i int = 0
+            var started bool = false
+            while i < htimes.len() {
+                let tt str = htimes.get(i)
+                if !started {
+                    if tt.sub(11, 13) == cur_hour {
+                        started = true
+                    } else {
+                        i = i + 1
+                        continue
+                    }
+                }
+                if out.hourly.len() < 24 {
+                    var label str = "现在"
+                    if out.hourly.len() != 0 { label = tt.sub(11, 16) }
+                    out.hourly.push(HourPoint {
+                        time: label,
+                        icon: icon_for(hcodes.get(i)),
+                        temp: temp_s(htemps.get(i)),
+                        now: out.hourly.len() == 0
+                    })
+                }
+                i = i + 1
+            }
+        }
+
+        // ── 5 日：今天 + 星期 ──
+        let dv = v.daily
+        if dv != nil {
+            var ddays []str = []
+            for d in dv.time {
+                ddays.push("" + d)
+            }
+            var dmaxs []float = []
+            for t in dv.temperature_2m_max {
+                dmaxs.push(t)
+            }
+            var dmins []float = []
+            for t in dv.temperature_2m_min {
+                dmins.push(t)
+            }
+            var dcodes []int = []
+            for c in dv.weather_code {
+                let cf float = c
+                dcodes.push((cf as int))
+            }
+            var j int = 0
+            while j < ddays.len() {
+                let ds str = ddays.get(j)
+                let dwc int = dcodes.get(j)
+                var label str = weekday_zh(ds)
+                if j == 0 { label = "今天" }
+                out.daily.push(DayPoint {
+                    day: label,
+                    icon: icon_for(dwc),
+                    cond: cond_zh_for(dwc),
+                    tmin: temp_s(dmins.get(j)),
+                    tmax: temp_s(dmaxs.get(j))
+                })
+                j = j + 1
+            }
+        }
+    } catch e {
+        out.error = "forecast transport: " + e
+        return out
+    }
+
+    // ── AQI：独立软失败（air-quality API 挂不影响主报文）──
+    try {
+        let qa str = get_text("https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + ll[0] + "&longitude=" + ll[1] + "&current=us_aqi")
+        if qa != "" {
+            let qv = json.parse(qa)
+            if qv != nil {
+                let qc = qv.current
+                if qc != nil {
+                    let qa_f float = qc.us_aqi
+                    let qa_i int = (qa_f as int)
+                    out.aqi = qa_i.str()
+                    out.aqi_level = aqi_level(qa_i)
+                }
+            }
+        }
+    } catch {
+        out.aqi = "—"
+        out.aqi_level = "—"
+    }
+
+    out.ok = true
+    out.error = ""
+    return out
+}
