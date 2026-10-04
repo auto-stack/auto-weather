@@ -1,0 +1,154 @@
+---
+plan_id: PLAN-006
+status: executing
+feature_name: 设置中心（单位/主题/默认城市/城市管理排序）
+author: [agent]
+created_at: 2026-10-04T13:00:00Z
+updated_at: 2026-10-04T13:00:00Z
+plan_revision: 1
+current_step: 0
+total_steps: 5
+supersedes_spec_components: []
+new_spec_components: [docs/specs/weather-app.md#F-P1-04, docs/specs/weather-app.md#F-P1-05]
+touched_goals: [F-P1-04, F-P1-05]
+---
+
+# PLAN-006 设置中心（单位/主题/默认城市/城市管理排序）
+
+> 编号说明：文件取 006 对齐 roadmap 与用户口径；005 预留给 QWeather
+> provider（受 JWT 阻塞未立项）。编号非 max+1 的偏离在此记录。
+
+## 0. 变更摘要
+
+新增设置中心（齿轮按钮展开设置卡，横竖屏共享）：温度单位 °C/°F、风速
+单位 km/h/m/s、默认城市（点击轮选内置城）、城市管理（自定义城市
+↑↓ 排序 + ✕ 删除收纳）。设置经后端 `settings.json` 持久化
+（local_data_dir），Init 先取设置再按默认城市+单位拉取报文；单位作为
+report/report_at 的查询参数贯穿全部 6 个取数点。主题沿用既有
+ToggleTheme（设置卡内同步入口）。语言（i18n）为跨切面工程，明确拆出
+本计划另立（登记 spec 偏差）。
+
+## 1. 目标
+
+- **Goal**：单位/默认城市/排序设置持久化并即时生效；设置入口对双布局
+  可用。
+- **Non-goals**：语言切换（i18n 拆独立计划）；accent 色板 UI（SetAccent
+  已有 handler 无 UI，维持）；自定义城市设为默认（default 仅内置城）。
+- 受影响模块：`src/back/api.at`、`src/front/app.at`、`tests/vm_smoke.py`、
+  README、`docs/specs/weather-app.md`。
+- 成功标志：AC-01..AC-06 全过，vm_smoke 全绿。
+
+## 2. 架构方案
+
+设置面 = 后端 JSON（settings_get/settings_set 整对象替换，契约
+`SettingsOut{ok,error,temp_unit,wind_unit,default_city}`）；单位下发 =
+report/report_at 增 `ut/uw` 查询参数（后端 temp_s/风速拼装点分支）；
+排序 = `POST /api/weather/cities_move {id,dir}` 读-交换-重写。城市/设置
+双 JSON 同目录。Init 顺序：settings_get → 应用模型 → weather_report
+（default_city + 单位）。
+
+## 3. 技术栈
+
+AutoLang .at、`#[api]`/VM merged、local_data_dir JSON、vm_smoke MCP。
+
+## 4. 需求分析与背景调查
+
+- **授权**（用户 2026-10-04"考虑下一个计划 006"）：沿用 new+work 两段
+  授权；review/merge 未授权。
+- 前置：PLAN-001..004 已归档（751bc3/dbfff44/ba88d40/f7ed637）。
+- 关键事实：温度格式化单点 `temp_s`（全温度出口经此）；风速拼装在
+  impl_report_ll 单点；Init 硬编码 beijing（需改默认城市消费）；select
+  组件 VM 不渲染（os-config V4）→ 默认城市用轮选按钮而非下拉。
+
+## 5. 详细设计
+
+### 5.1 后端（src/back/api.at）
+
+- `pub type SettingsOut = { ok: bool, error: str, temp_unit: str,
+  wind_unit: str, default_city: str }`；`impl_settings_get/set`（settings.json
+  缺省 `{"temp_unit":"c","wind_unit":"kmh","default_city":"beijing"}`；
+  set=读-合-写整对象）。
+- `weather_report(city str, ut str, uw str)` / `weather_report_at(lat, lon,
+  ut, uw)`：#[api] 增参（GET 取 query；旧调用方=前端全量更新）。
+- 单位分支：`temp_s` 加 ut 参数（f → (v*9/5+32)  fmt + "°F"；fmt_i 复合
+  算术经 let 中转）；风速 `uw=="ms"` → `(spd/3.6)` fmt + " m/s"。
+  hourly/daily 温度同走 temp_s ✓ 单点收口。
+- `impl_cities_move(id str, dir str) CityListOut`：读表-定位-与相邻交换
+  （up=前邻，down=后邻）-重写-返回。
+- 端点：`GET /api/weather/settings`、`POST /api/weather/settings`、
+  `POST /api/weather/cities_move`。
+
+### 5.2 前端（src/front/app.at）
+
+- model 增：`s_temp_unit/s_wind_unit/s_default_city str`（默认 c/kmh/
+  beijing）、`settings_open bool=false`。
+- 所有 report 调用点（Init/SelectCity/SelectCustom/Refresh 双分支）传
+  `.s_temp_unit/.s_wind_unit`。
+- Init：先 `settings_get()` → ok 则三设置入模型（失败保默认）→ 默认城市
+  替换原硬编码 beijing（city_id + city_zh + mock 链 id）。
+- 视图：header 齿轮按钮 `⚙️` → `.ToggleSettings`；`if .settings_open`
+  设置卡（app_frame 内、布局分支前 → 双布局共享）：温度单位两 pill、
+  风速两 pill、默认城市轮选按钮（label "默认城市：${.s_default_city}"→
+  onclick 循环内置 10 城）、城市管理（for custom_pills：↑ ↓ ✕ 三钮，
+  onclick MoveCustom/RemoveCustom）。
+- handler：`SetTempUnit(u)/SetWindUnit(u)` → 模型 + settings_set 持久化；
+  `CycleDefaultCity` → 内置表循环 + 持久化；`MoveCustom(id,dir)` →
+  cities_move → 重建 pills；`ToggleSettings`。
+
+### 5.3 测试（tests/vm_smoke.py）
+
+- 新增 T11：① 设置往返（切 °F + m/s → state s_temp_unit=="f"、
+  s_wind_unit=="ms"）；② 单位生效（刷新 → 快照含 "°F" 与 " m/s"）；
+  ③ 排序：添加大连 → ↑ 移至青岛前（custom_names 中大连位置 < 青岛）；
+  ④ 默认城市轮选（label 变化 + state s_default_city 变更持久）。
+  既有 T1–T10 不回归（T1 初始城市断言受默认城市影响——保持默认 beijing
+  不被 T11 前段修改；T11 ④ 的轮选先设置再断言，不干扰 T1 已完成的断言）。
+
+### 规范增量
+
+| delta_id | op | target | before/after | rationale | AC |
+|---|---|---|---|---|---|
+| SD-01 | modify | docs/specs/weather-app.md | F-P1-04 标"单位/主题/默认城市达成（006）；语言拆独立 i18n 计划"；F-P1-05 标"排序达成（006）" | 账实对齐 | AC-06 |
+| SD-02 | modify | README.md | 数据节补设置中心说明 | 用户可见能力 | AC-06 |
+
+## 6. 测试设计
+
+- T11（新）见 §5.3；设置持久化跨重启依赖与 cities 同口径（本进程内断言
+  + 文件重写证据）。
+
+## 7. 验收标准
+
+| ID | 标准 | 验证 |
+|---|---|---|
+| AC-01 | 设置面持久化（settings.json 读写往返） | T11 ①④ |
+| AC-02 | °F/m/s 单位端到端生效（快照见证） | T11 ② |
+| AC-03 | 自定义城市 ↑↓ 排序生效（顺序断言） | T11 ③ |
+| AC-04 | 默认城市设置项存在且 Init 消费（源码锚定 + 轮选断言） | T11 ④ + Init 检查 |
+| AC-05 | vm_smoke 全绿（34 旧 + T11 新 4 项 = 38）×2 | python tests/vm_smoke.py |
+| AC-06 | SD-01/02 落地 | 文件核查 |
+
+## 8. 执行步骤
+
+- [ ] T-01 后端：SettingsOut + get/set + 单位参数分支（AC-01/02/04 前置）
+  - 验证：T11 ①②
+- [ ] T-02 后端：cities_move（AC-03 前置）
+  - 验证：T11 ③
+- [ ] T-03 前端：设置卡 + 齿轮 + 6 调用点传参 + Init 默认城市（AC-01..04）
+  - 验证：T11 ①②③④
+- [ ] T-04 tests：T11 + 全量回归（AC-05）
+  - 验证：vm_smoke ×2 全绿
+- [ ] T-05 docs：SD-01/02（AC-06）
+  - 验证：文件核查
+
+依赖：T-01/T-02 → T-03；T-04/05 最后。
+
+## 9. 复审记录
+
+- `stage: new | PLAN-006 | rev 1 | outcome: pass | next: work`——授权内
+  （"考虑下一个计划 006"沿用 new+work）；编号取 006 对齐 roadmap（005
+  预留 QWeather），偏离 max+1 规则已记录。
+
+## 10. 待澄清事项
+
+- 语言/i18n 拆独立计划（跨切面：视图全部文案 + 后端映射表双语化）；
+  自定义城市设为默认、accent 色板 UI 未排期。
