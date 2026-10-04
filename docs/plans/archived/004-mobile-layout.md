@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-004
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: 竖屏布局正式化（手机版功能对齐）与 F-002 修复
 author: [agent]
 created_at: 2026-10-04T11:00:00Z
@@ -148,6 +149,15 @@ AutoLang .at widget/VM merged、vm_smoke MCP（layout 切换断言）。
   evidence: 复审复现 /tmp/review4-smoke.out（34/34）；worktree 零脏文件 |
   next: merge`。复审局限声明：复审与实施同会话，结论全部经工件与
   复现命令重建。
+- `stage: merge | PLAN-004:r1 | outcome: pass`——归并收据：`prepared`
+  基线 r1/pass @ 348b9b0；冻结增量 SD-01/02；交付提交 348b9b0；口径沿用
+  PLAN-001 裁定。`landed`：rebase 后 `--ff-only`——v0.6-dev tip =
+  f7ed6371cffee5d79916d5795995dc4930c2fde5 = 交付提交（改写映射
+  348b9b0→f7ed637；range-diff `=` 等价）；主检出集成冒烟 34/34
+  （/tmp/merge4-smoke.out）。`ledger_refreshed`: N/A。`archived`:
+  docs/plans/archived/004-mobile-layout.md，delivered。`cleaned`:
+  wt-guard.sh 缺失（人工等价核查）；移除前预杀 worktree 派生
+  node/esbuild；worktree 与 plan-004-dev 已移除，组目录已删。
 
 ## 10. 待澄清事项
 
