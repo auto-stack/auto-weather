@@ -123,6 +123,8 @@ widget App {
         var alert_level str = ""
         var alert_title str = ""
         var alert_text str = ""
+        // PLAN-004：当前选中的自定义城市（""=内置城市；Refresh 据此分流）
+        var active_custom str = ""
         var refreshing bool = false
         var hourly = [
             { time: "现在", icon: "⛅", temp: "23°", now: true },
@@ -199,7 +201,7 @@ widget App {
                     }
                 }
 
-                // ── PLAN-001：城市搜索（仅横屏布局；竖屏随 PLAN-004）──
+                // ── PLAN-001/004：城市搜索（横屏；竖屏同块在 portrait 分支）──
                 row {
                     style: "w-full items-center gap-2"
                     input { placeholder: "搜索城市（中文/拼音）", value: .search_q, oninput: .SearchChanged, style: "flex-1 px-3 py-1.5 text-xs rounded-full border border-border bg-background text-foreground outline-none" }
@@ -537,6 +539,92 @@ widget App {
                         col {
                             style: "w-full max-w-md mx-auto gap-3"
 
+                            // PLAN-004：竖屏功能对齐——预警 banner/搜索/城市条
+                            if .alert_title != "" {
+                                row {
+                                    style: "w-full items-center gap-2 px-3 py-2 rounded-2xl bg-amber-500/15 border border-amber-500/40"
+                                    text .alert_level { style: "text-xs font-bold text-amber-600 shrink-0" }
+                                    text .alert_title { style: "text-xs font-medium text-foreground" }
+                                }
+                            }
+                            row {
+                                style: "w-full items-center gap-2"
+                                input { placeholder: "搜索城市（中文/拼音）", value: .search_q, oninput: .SearchChanged, style: "flex-1 px-3 py-1.5 text-xs rounded-full border border-border bg-background text-foreground outline-none" }
+                                button "搜索" { onclick: .DoSearch, variant: "primary", style: refresh_idle }
+                            }
+                            if .search_err != "" {
+                                text .search_err { style: hint_text }
+                            }
+                            row {
+                                style: "w-full gap-2 flex-wrap"
+                                for h in .search_hits {
+                                    button h.label { onclick: .AddHit(h.id), variant: "secondary", style: city_pill_off }
+                                }
+                            }
+                            // 城市 pill 条（竖屏与横屏同构）
+                            col {
+                                style: "w-full h-11 shrink-0"
+                                scroll (axis: "x", style: "w-full h-full") {
+                                    row {
+                                        style: "items-center gap-2 h-full pr-2"
+                                        if .city_id == "beijing" {
+                                            button "北京" { onclick: .SelectCity("beijing"), variant: "primary", style: city_pill_on }
+                                        } else {
+                                            button "北京" { onclick: .SelectCity("beijing"), variant: "secondary", style: city_pill_off }
+                                        }
+                                        if .city_id == "shanghai" {
+                                            button "上海" { onclick: .SelectCity("shanghai"), variant: "primary", style: city_pill_on }
+                                        } else {
+                                            button "上海" { onclick: .SelectCity("shanghai"), variant: "secondary", style: city_pill_off }
+                                        }
+                                        if .city_id == "guangzhou" {
+                                            button "广州" { onclick: .SelectCity("guangzhou"), variant: "primary", style: city_pill_on }
+                                        } else {
+                                            button "广州" { onclick: .SelectCity("guangzhou"), variant: "secondary", style: city_pill_off }
+                                        }
+                                        if .city_id == "shenzhen" {
+                                            button "深圳" { onclick: .SelectCity("shenzhen"), variant: "primary", style: city_pill_on }
+                                        } else {
+                                            button "深圳" { onclick: .SelectCity("shenzhen"), variant: "secondary", style: city_pill_off }
+                                        }
+                                        if .city_id == "hangzhou" {
+                                            button "杭州" { onclick: .SelectCity("hangzhou"), variant: "primary", style: city_pill_on }
+                                        } else {
+                                            button "杭州" { onclick: .SelectCity("hangzhou"), variant: "secondary", style: city_pill_off }
+                                        }
+                                        if .city_id == "chengdu" {
+                                            button "成都" { onclick: .SelectCity("chengdu"), variant: "primary", style: city_pill_on }
+                                        } else {
+                                            button "成都" { onclick: .SelectCity("chengdu"), variant: "secondary", style: city_pill_off }
+                                        }
+                                        if .city_id == "xian" {
+                                            button "西安" { onclick: .SelectCity("xian"), variant: "primary", style: city_pill_on }
+                                        } else {
+                                            button "西安" { onclick: .SelectCity("xian"), variant: "secondary", style: city_pill_off }
+                                        }
+                                        if .city_id == "wuhan" {
+                                            button "武汉" { onclick: .SelectCity("wuhan"), variant: "primary", style: city_pill_on }
+                                        } else {
+                                            button "武汉" { onclick: .SelectCity("wuhan"), variant: "secondary", style: city_pill_off }
+                                        }
+                                        if .city_id == "harbin" {
+                                            button "哈尔滨" { onclick: .SelectCity("harbin"), variant: "primary", style: city_pill_on }
+                                        } else {
+                                            button "哈尔滨" { onclick: .SelectCity("harbin"), variant: "secondary", style: city_pill_off }
+                                        }
+                                        if .city_id == "sanya" {
+                                            button "三亚" { onclick: .SelectCity("sanya"), variant: "primary", style: city_pill_on }
+                                        } else {
+                                            button "三亚" { onclick: .SelectCity("sanya"), variant: "secondary", style: city_pill_off }
+                                        }
+                                        for c in .custom_pills {
+                                            button c.name { onclick: .SelectCustom(c.id), variant: "secondary", style: city_pill_off }
+                                            button "✕" { onclick: .RemoveCustom(c.id), variant: "secondary", style: "w-6 h-6 text-[10px] items-center justify-center rounded-full bg-secondary text-muted-foreground hover:bg-secondary/80 transition-colors shrink-0" }
+                                        }
+                                    }
+                                }
+                            }
+
                             // Hero
                             col {
                                 style: if .condition == "sunny" {
@@ -633,6 +721,25 @@ widget App {
                                         text .source_label { style: "text-xs text-muted-foreground" }
                                     }
                                 }
+                                // PLAN-004：PM 行（竖屏对齐）
+                                row {
+                                    style: "w-full gap-2"
+                                    col {
+                                        style: metric_card
+                                        text "PM2.5" { style: metric_label }
+                                        text .pm25 { style: metric_value }
+                                    }
+                                    col {
+                                        style: metric_card
+                                        text "PM10" { style: metric_label }
+                                        text .pm10 { style: metric_value }
+                                    }
+                                    col {
+                                        style: metric_card
+                                        text "O3" { style: metric_label }
+                                        text .o3 { style: metric_value }
+                                    }
+                                }
                             }
 
                             // 预报 Tab（与横屏同构）
@@ -697,6 +804,47 @@ widget App {
                                                         text d.tmin { style: "text-[10px] text-muted-foreground" }
                                                     }
                                                 }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // PLAN-004：生活指数（竖屏 scroll-x 版；flex-wrap
+                            // iced 不支持——plan412 降级矩阵在册）
+                            col {
+                                style: "w-full gap-2"
+                                text "生活指数" { style: section_title }
+                                scroll (axis: "x", style: "w-full h-24") {
+                                    row {
+                                        style: "items-center gap-2 h-20"
+                                        for it in .indices {
+                                            col {
+                                                style: "w-20 shrink-0 bg-card border border-border rounded-2xl p-3 gap-1 items-center"
+                                                text it.name { style: "text-[10px] text-muted-foreground" }
+                                                text it.level { style: "text-sm font-semibold text-foreground" }
+                                                text it.note { style: "text-[9px] text-muted-foreground text-center" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            // PLAN-004：24小时降水（竖屏）
+                            col {
+                                style: "w-full gap-2"
+                                text "24小时降水" { style: section_title }
+                                scroll (axis: "x", style: "w-full h-28") {
+                                    row {
+                                        style: "items-end gap-1.5 h-24"
+                                        for p in .precip {
+                                            col {
+                                                style: "w-10 shrink-0 items-center gap-0.5"
+                                                text p.prob { style: "text-[9px] text-muted-foreground" }
+                                                col {
+                                                    style: p.bar
+                                                }
+                                                text p.time { style: "text-[9px] text-muted-foreground" }
+                                                text p.amount { style: "text-[8px] text-muted-foreground/70" }
                                             }
                                         }
                                     }
@@ -875,6 +1023,8 @@ widget App {
 
         // PLAN-001：选中自定义城市——report_at 取数
         .SelectCustom(id) -> {
+            .city_id = ""
+            .active_custom = id
             .search_err = ""
             var i int = 0
             var found bool = false
@@ -954,6 +1104,7 @@ widget App {
 
         .SelectCity(id) -> {
             .city_id = id
+            .active_custom = ""
             // ASCII id → 中文名 + 数据（避免 a2r 中文比较 mojibake）
             if id == "shanghai" {
                 .city_zh = "上海"
@@ -1157,34 +1308,85 @@ widget App {
 
         .Refresh -> {
             .refreshing = true
-            // r10：真实刷新（Open-Meteo）；失败时全场保留现状（含演示样本）
-            let r = weather_report(.city_id)
-            if r.ok {
-                .condition = r.condition
-                .cond_zh = r.cond_zh
-                .icon = r.icon
-                .temp = r.temp
-                .feels = r.feels
-                .humidity = r.humidity
-                .wind = r.wind
-                .uv = r.uv
-                .aqi = r.aqi
-                .aqi_level = r.aqi_level
-                .pressure = r.pressure
-                .visibility = r.visibility
-                .updated_at = r.updated_at
-                .hourly = r.hourly
-                .daily = r.daily
-                .data_note = "实时数据 · Open-Meteo"
-                .source_label = "Open-Meteo"
-                .pm25 = r.pm25
-                .pm10 = r.pm10
-                .o3 = r.o3
-                .indices = r.indices
-                .precip = r.precip
-                .alert_level = r.alert_level
-                .alert_title = r.alert_title
-                .alert_text = r.alert_text
+            // r10+PLAN-004：真实刷新（Open-Meteo）；失败保留现状。updated_at
+            // 先置哨兵——取数成功才回填（自定义通道可观察性）；active_custom
+            // 非空走 report_at，否则内置 weather_report。
+            .updated_at = "--:--"
+            var did_custom bool = false
+            if .active_custom != "" {
+                var i int = 0
+                var found bool = false
+                var la str = ""
+                var lo str = ""
+                while i < .custom_ids.len() {
+                    if .custom_ids.get(i) == .active_custom {
+                        found = true
+                        la = .custom_lats.get(i)
+                        lo = .custom_lons.get(i)
+                    }
+                    i = i + 1
+                }
+                if found {
+                    did_custom = true
+                    let rc2 = weather_report_at(la, lo)
+                    if rc2.ok {
+                        .condition = rc2.condition
+                        .cond_zh = rc2.cond_zh
+                        .icon = rc2.icon
+                        .temp = rc2.temp
+                        .feels = rc2.feels
+                        .humidity = rc2.humidity
+                        .wind = rc2.wind
+                        .uv = rc2.uv
+                        .aqi = rc2.aqi
+                        .aqi_level = rc2.aqi_level
+                        .pressure = rc2.pressure
+                        .visibility = rc2.visibility
+                        .updated_at = rc2.updated_at
+                        .hourly = rc2.hourly
+                        .daily = rc2.daily
+                        .data_note = "实时数据 · Open-Meteo"
+                        .source_label = "Open-Meteo"
+                        .pm25 = rc2.pm25
+                        .pm10 = rc2.pm10
+                        .o3 = rc2.o3
+                        .indices = rc2.indices
+                        .precip = rc2.precip
+                        .alert_level = rc2.alert_level
+                        .alert_title = rc2.alert_title
+                        .alert_text = rc2.alert_text
+                    }
+                }
+            }
+            if !did_custom {
+                let r = weather_report(.city_id)
+                if r.ok {
+                    .condition = r.condition
+                    .cond_zh = r.cond_zh
+                    .icon = r.icon
+                    .temp = r.temp
+                    .feels = r.feels
+                    .humidity = r.humidity
+                    .wind = r.wind
+                    .uv = r.uv
+                    .aqi = r.aqi
+                    .aqi_level = r.aqi_level
+                    .pressure = r.pressure
+                    .visibility = r.visibility
+                    .updated_at = r.updated_at
+                    .hourly = r.hourly
+                    .daily = r.daily
+                    .data_note = "实时数据 · Open-Meteo"
+                    .source_label = "Open-Meteo"
+                    .pm25 = r.pm25
+                    .pm10 = r.pm10
+                    .o3 = r.o3
+                    .indices = r.indices
+                    .precip = r.precip
+                    .alert_level = r.alert_level
+                    .alert_title = r.alert_title
+                    .alert_text = r.alert_text
+                }
             }
             .refreshing = false
         }

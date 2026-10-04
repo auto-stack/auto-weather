@@ -32,6 +32,9 @@ auto run -r vm
 - **降水与预警**（PLAN-003）："24小时降水"条形区（逐小时概率%/量mm，条高按
   量分档、颜色按概率分档）；"天气预警"banner 为条件渲染展示位（有预警内容
   时显示，接入待 QWeather）。
+- **双布局**（PLAN-004）：横屏（网页/桌面/平板自适应）与竖屏（手机版）
+  功能完全对齐——搜索/城市管理/生活指数/24小时降水/预警位双端可用；
+  "刷新"对自定义城市同样生效。
 - **QWeather**：自定义 API Host 已实证只认新平台 JWT
   （`Authorization: Bearer <JWT>`），Key ID 本身不是 token；纯 `.at` 侧
   暂无 Ed25519/ES256 签名原语，待 auto-lang crypto 面或外部 token 服务

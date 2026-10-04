@@ -653,6 +653,55 @@ def main() -> int:
             print(f"  FAIL: T9 {e}")
             failed += 1
 
+        print("\n=== T10 portrait parity + F-002 + custom refresh (PLAN-004) ===")
+        try:
+            # ① 竖屏对齐（T9 后处于横屏态）
+            pid_btn = find_clickable_for_label(mcp.snapshot(), "竖屏")
+            if not pid_btn:
+                raise RuntimeError("portrait toggle not found")
+            mcp.click(pid_btn)
+            time.sleep(1.5)
+            st_lay = mcp.state("layout_mode")
+            snap_p = mcp.snapshot()
+            ok_par = "portrait" in st_lay and "生活指数" in snap_p and "24小时降水" in snap_p and "✕" in snap_p
+            results.append(("portrait parity (indices/precip/pills)", ok_par))
+            print(f"  {'PASS' if ok_par else 'FAIL'}: portrait sections")
+            if not ok_par:
+                failed += 1
+
+            # ② 切回横屏（防后续漂移）
+            lid2 = find_clickable_for_label(mcp.snapshot(), "横屏")
+            if lid2:
+                mcp.click(lid2)
+                time.sleep(1.0)
+
+            # ③ F-002：T7 选中青岛后 city_id 应为 ""（内置 pill 无高亮残留）
+            st_cid = mcp.state("city_id", "city_zh")
+            print(f"  city state: {st_cid[:200]}")
+            ok_f2 = 'city_id: ""' in st_cid and "青岛" in st_cid
+            results.append(("F-002 city_id cleared on SelectCustom", ok_f2))
+            print(f"  {'PASS' if ok_f2 else 'FAIL'}: F-002")
+            if not ok_f2:
+                failed += 1
+
+            # ④ 自定义城市刷新走 report_at（哨兵 updated_at 被回填）
+            rid = find_clickable_for_label(mcp.snapshot(), "刷新")
+            if not rid:
+                raise RuntimeError("refresh button not found")
+            mcp.click(rid)
+            time.sleep(5.0)
+            st_u = mcp.state("updated_at", "source_label", "city_zh")
+            print(f"  after refresh: {st_u[:260]}")
+            ok_rf = "--:--" not in st_u and "Open-Meteo" in st_u and "青岛" in st_u
+            results.append(("Refresh on custom city (report_at)", ok_rf))
+            print(f"  {'PASS' if ok_rf else 'FAIL'}: custom refresh")
+            if not ok_rf:
+                failed += 1
+        except Exception as e:
+            results.append(("T10 portrait/F-002/refresh", False))
+            print(f"  FAIL: T10 {e}")
+            failed += 1
+
     finally:
         proc.terminate()
         try:
