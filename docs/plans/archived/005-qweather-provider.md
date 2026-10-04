@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-005
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: QWeather provider 接入（API KEY 凭据 · key= 认证）
 author: [agent]
 created_at: 2026-10-04T16:00:00Z
@@ -171,7 +172,7 @@ hh=int(seg)+8 mod 24，不涉日期进位——标签级精度可接受）。
   款流程）。`stage: work` 记录见上。
 - `stage: merge | PLAN-005:r1 | outcome: pass`——归并收据：`prepared`
   基线 r1/pass @ 42cd911；增量 SD-01/02；口径沿用 PLAN-001 裁定。
-  `landed`/`archived`/`cleaned` 以执行时 git 证据为准（见提交）。`
+  `landed`: v0.6-dev tip=bcefd9a4a7b36e1f644a84ddb69d8aa9903e79a8=交付提交（改写 42cd911→bcefd9a；range-diff `=`）；`archived`: 本文件；`cleaned`: worktree/分支/组目录已删（预杀派生进程）。ledger: N/A。`
   A3 T6/T7/T10 三处旧断言 provider 口径化（双 provider 时代的测试纪律：
   涉及 source 的断言必须枚举全部 provider 名）。
 
