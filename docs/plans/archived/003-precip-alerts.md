@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-003
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: 24小时降水展示与天气预警展示位
 author: [agent]
 created_at: 2026-10-04T09:00:00Z
@@ -158,6 +159,16 @@ AutoLang .at、`#[api]`/VM merged、Open-Meteo forecast
   evidence: 复审复现 /tmp/review3-smoke.out（31/31）；worktree 零脏文件；
   git worktree list 实证 | next: merge`。复审局限声明：复审与实施同会话，
   结论全部经工件与复现命令重建。
+- `stage: merge | PLAN-003:r1 | outcome: pass`——归并收据：`prepared`
+  基线 r1/pass @ ce3a965；冻结增量 SD-01/02；交付提交 ce3a965；口径沿用
+  PLAN-001 裁定（v0.6-dev / 无台账 N/A / README 约定）。`landed`：rebase
+  后 `--ff-only`——v0.6-dev tip = ba88d40a9938eed8f9ab59fcd1aa6c3303827b4e
+  = 交付提交（改写映射 ce3a965→ba88d40；range-diff `=` 等价）；主检出
+  集成冒烟 31/31（/tmp/merge3-smoke.out）。`ledger_refreshed`: N/A。
+  `archived`: docs/plans/archived/003-precip-alerts.md，delivered。
+  `cleaned`: wt-guard.sh 缺失（人工等价核查：组内路径/零脏/全落地）；
+  移除前预杀 worktree 派生 node/esbuild；worktree 与 plan-003-dev 已移除，
+  组目录已删。
 
 ## 10. 待澄清事项
 
