@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-002
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: 生活指数、空气详情与城市管理（删除）
 author: [agent]
 created_at: 2026-10-04T06:30:00Z
@@ -179,6 +180,21 @@ AutoLang .at（`#[api]`/widget/VM merged）、Open-Meteo Air Quality API
   evidence: 复审复现 /tmp/review2-smoke.out（26/26）；worktree 零脏文件；
   worktree 定位 git worktree list 实证 | next: merge`。复审局限声明：
   复审与实施同会话，结论全部经工件与复现命令重建。
+- `stage: merge | PLAN-002:r1 | outcome: pass`——归并收据（按检查点）：
+  `prepared`: 复审基线 r1/pass @ 8ee25b1；冻结增量 SD-01（spec F-P0-03/04
+  标注 + F-P1-05 删除达成/排序归 006）/SD-02（README 指数/组分/删除说明）；
+  交付提交 8ee25b1；口径沿用 PLAN-001 裁定（交付线 v0.6-dev；无台账设施
+  ledger_refreshed=N/A；README 用法文档约定）。
+  `landed`: rebase 后 `git merge --ff-only`——v0.6-dev tip =
+  dbfff449cd6c21e04bac4d8f1616a8fa01050463 = 交付提交（改写映射
+  a00e4c5→064621e、8ee25b1→dbfff44；`git range-diff` 两条均 `=`）；
+  主检出集成冒烟 26/26 exit 0（/tmp/merge2-smoke.out）。
+  `ledger_refreshed`: N/A（同 PLAN-001 口径，无台账设施）。
+  `archived`: docs/plans/archived/002-life-indices-aqi.md，
+  completion_kind: delivered，git mv 保留历史。
+  `cleaned`: wt-guard.sh 本机缺失（沿用 PLAN-001 人工等价核查：路径在组
+  weather-002 内、零脏、提交全落地；移除前已预杀 worktree 派生
+  node/esbuild 进程）；worktree 与 plan-002-dev 分支已移除，组目录已删。
 
 ## 10. 待澄清事项
 
