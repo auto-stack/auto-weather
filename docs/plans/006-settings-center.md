@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-006
-status: execution_done
+status: reviewed
 feature_name: 设置中心（单位/主题/默认城市/城市管理排序）
 author: [agent]
 created_at: 2026-10-04T13:00:00Z
@@ -140,6 +140,25 @@ AutoLang .at、`#[api]`/VM merged、local_data_dir JSON、vm_smoke MCP。
   - 验证：vm_smoke 40/40 ×2（w6-smoke9/A）；启动前运行时状态卫生
     （settings/cities JSON 重置——跨运行 hermetic，消除 T1 beijing
     缺省与遗留设置污染的跨运行冲突）
+- `stage: review | PLAN-006 | rev 1 | outcome: pass |
+  reviewed_commit: ecdbbccf488bc6e63b25f19a49cc6b04ab27bedf |
+  base_commit: 94fcbf7（docs(plan): PLAN-006 contract）|
+  dependency_revisions: auto-lang 168b56923（仅验证工具链）|
+  spec_inputs: docs/specs/weather-app.md（worktree 含 SD-01）、README.md
+  （worktree 含 SD-02）——增量已核：描述当前行为与持久决策，未发布 |
+  acceptance_results: AC-01 pass（T11 单位 f/ms 入 state + 轮选持久）/
+  AC-02 pass（T11 ② 刷新后快照含 °F/m/s）/ AC-03 pass（T11 ③ 大连先于
+  青岛）/ AC-04 pass（T11 ④ 轮选 + Init settings_get 消费锚定）/
+  AC-05 pass（复审复现 worktree vm_smoke 40/40 exit 0）/ AC-06 pass
+  （SD-01/02 文件核查，commit ecdbbcc）|
+  findings: F-001 info——默认城市仅内置城（自定义为默认在 non-goals 明确）；
+  F-002 info——i18n 拆独立计划（SD-01 登记）；F-003 info——A6 偶发进程
+  退出 1 例（无 panic 日志，重跑即绿，环境/工具链偶发）；F-004 info——
+  设置卡内联渲染于布局分支上方（popover VM 脆弱，内联为正确取舍）。
+  均无阻塞 |
+  evidence: 复审复现 /tmp/review6-smoke.out（40/40）；worktree 零脏文件 |
+  next: merge`。复审局限声明：复审与实施同会话，结论全部经工件与
+  复现命令重建。
 - [x] T-05 docs：SD-01/02（AC-06）
   - 验证：commit ecdbbcc 文件核查
 
