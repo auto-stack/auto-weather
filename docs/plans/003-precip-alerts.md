@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-003
-status: executing
+status: execution_done
 feature_name: 24小时降水展示与天气预警展示位
 author: [agent]
 created_at: 2026-10-04T09:00:00Z
 updated_at: 2026-10-04T09:00:00Z
 plan_revision: 1
-current_step: 0
+current_step: 4
 total_steps: 4
 supersedes_spec_components: []
 new_spec_components: [docs/specs/weather-app.md#F-P1-01, docs/specs/weather-app.md#F-P1-02]
@@ -107,24 +107,25 @@ AutoLang .at、`#[api]`/VM merged、Open-Meteo forecast
 
 ## 7. 验收标准
 
-| ID | 标准 | 验证 |
-|---|---|---|
-| AC-01 | 报文带 24 点降水序列（time/prob/amount/bar），概率 0-100 或 -1 哨兵 | T9 ②（state 计数 24） |
-| AC-02 | 横屏"24小时降水"区渲染（含 mm 标注） | T9 ①③ |
-| AC-03 | 预警契约字段默认 ""、banner 默认隐藏、无崩溃 | T9 ④ |
-| AC-04 | vm_smoke 全绿（26 旧 + T9 新 4 项 = 30）×2 | python tests/vm_smoke.py |
-| AC-05 | SD-01/02 落地 | 文件核查 |
+| ID | 标准 | 验证 | 结果 |
+|---|---|---|---|
+| AC-01 | 报文带 24 点降水序列（time/prob/amount/bar），概率 0-100 或 -1 哨兵 | T9 ②（state 计数 24） | **pass**（31/31 ×2） |
+| AC-02 | 横屏"24小时降水"区渲染（含 mm 标注） | T9 ①③ | **pass** |
+| AC-03 | 预警契约字段默认 ""、banner 默认隐藏、无崩溃 | T9 ④ | **pass** |
+| AC-04 | vm_smoke 全绿（26 旧 + T9 新 5 项 = 31）×2 | python tests/vm_smoke.py ×2 | **pass** |
+| AC-05 | SD-01/02 落地 | 文件核查（commit ce3a965） | **pass** |
 
 ## 8. 执行步骤
 
-- [ ] T-01 后端：PrecipPoint + 扫描/分档/bar 拼装 + alert 字段（AC-01/03）
-  - 验证：T9 ②④ / merged smoke
-- [ ] T-02 前端：降水区 + 预警 banner + 赋值块（AC-02/03）
-  - 验证：T9 ①③④
-- [ ] T-03 tests：T9 + 全量回归（AC-04）
-  - 验证：vm_smoke ×2 全绿
-- [ ] T-04 docs：SD-01/02（AC-05）
-  - 验证：文件核查
+- [x] T-01 后端：PrecipPoint + 扫描/分档/bar 拼装 + alert 字段（AC-01/03）
+  - 验证：T9 ②④（precip 恰 24 点；alert_title 空串缺省）
+- [x] T-02 前端：降水区 + 预警 banner + 赋值块（AC-02/03）
+  - 验证：T9 ①③④（区渲染/mm 标注/banner 缺席）；`style: p.bar` 动态绑定
+    一次通过（计划阶段 031-paint/038 先例 probe 前置，免去视图迭代）
+- [x] T-03 tests：T9 + 全量回归（AC-04）
+  - 验证：vm_smoke 31/31 ×2（w3-smoke1/2 全绿，一次通过无修复轮）
+- [x] T-04 docs：SD-01/02（AC-05）
+  - 验证：commit ce3a965 文件核查
 
 依赖：T-01→T-02；T-03/04 最后。
 
@@ -132,6 +133,14 @@ AutoLang .at、`#[api]`/VM merged、Open-Meteo forecast
 
 - `stage: new | PLAN-003 | rev 1 | outcome: pass | next: work`——授权内
   （"规划计划3,并实施"沿用 new+work），任务覆盖 AC-01..05 与 SD-01/02。
+- `stage: work | PLAN-003 | rev 1 | outcome: pass | code_commit: ce3a965
+  (on plan-003-dev, base 2938e11) | task_ids: T-01..T-04 | evidence:
+  worktree vm_smoke 31/31 ×2（w3-smoke1/2 一次通过）| blockers: 无 |
+  next: review`——所有任务与 AC 映射已核销，变更已提交，worktree 保留待复审。
+- **实施调整记录**：无重大调整。配方沉淀生效——计划阶段前置 probe
+  （动态 style 绑定先例 + 降水参数可用性）使 T-02 一次通过；概率通道
+  按 A3 教训直接走 raw 扫描（null 哨兵），未发生中毒返工。唯一操作事故：
+  一次 Edit 吞换行致注释与下一行粘连，当轮修复（未留残）。
 
 ## 10. 待澄清事项
 
