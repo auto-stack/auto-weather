@@ -57,7 +57,7 @@ style aqi_mid = "text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-prima
 // r.ok=false，全场保留下方演示样本（渐进降级，与 027-file-manager 同构）。
 // PLAN-001：城市搜索/自定义城市/任意坐标报文（平行 str 数组 + 索引循环
 // 物化——os-config VG12-14 终版 API 形状规则）。
-use back.api: weather_report, weather_search, cities_get, cities_add, weather_report_at
+use back.api: weather_report, weather_search, cities_get, cities_add, cities_remove, weather_report_at
 
 widget App {
     msg {
@@ -68,6 +68,7 @@ widget App {
         SetAccent(str),
         SetLayout(str),
         SetForecastTab(str),
+        RemoveCustom(str),
         Init
     }
 
@@ -112,6 +113,11 @@ widget App {
         var custom_lats = []
         var custom_lons = []
         var custom_pills = []
+        // PLAN-002：空气组分 + 生活指数
+        var pm25 str = "—"
+        var pm10 str = "—"
+        var o3 str = "—"
+        var indices = []
         var refreshing bool = false
         var hourly = [
             { time: "现在", icon: "⛅", temp: "23°", now: true },
@@ -191,7 +197,7 @@ widget App {
                 row {
                     style: "w-full gap-2 flex-wrap"
                     for h in .search_hits {
-                        button h.name { onclick: .AddHit(h.id), variant: "secondary", style: city_pill_off }
+                        button h.label { onclick: .AddHit(h.id), variant: "secondary", style: city_pill_off }
                     }
                 }
 
@@ -256,6 +262,7 @@ widget App {
                             // PLAN-001：自定义城市 pill（动态 for 渲染）
                             for c in .custom_pills {
                                 button c.name { onclick: .SelectCustom(c.id), variant: "secondary", style: city_pill_off }
+                                button "✕" { onclick: .RemoveCustom(c.id), variant: "secondary", style: "w-6 h-6 text-[10px] items-center justify-center rounded-full bg-secondary text-muted-foreground hover:bg-secondary/80 transition-colors shrink-0" }
                             }
                         }
                     }
@@ -441,6 +448,41 @@ widget App {
                                             style: metric_card
                                             text "数据" { style: metric_label }
                                             text .source_label { style: "text-xs text-muted-foreground" }
+                                        }
+                                    }
+                                    // PLAN-002：空气组分（PM 行）
+                                    row {
+                                        style: "w-full gap-2"
+                                        col {
+                                            style: metric_card
+                                            text "PM2.5" { style: metric_label }
+                                            text .pm25 { style: metric_value }
+                                        }
+                                        col {
+                                            style: metric_card
+                                            text "PM10" { style: metric_label }
+                                            text .pm10 { style: metric_value }
+                                        }
+                                        col {
+                                            style: metric_card
+                                            text "O3" { style: metric_label }
+                                            text .o3 { style: metric_value }
+                                        }
+                                    }
+                                }
+                                // PLAN-002：生活指数区（for 零迭代安全）
+                                col {
+                                    style: "w-full gap-2"
+                                    text "生活指数" { style: section_title }
+                                    row {
+                                        style: "w-full gap-2"
+                                        for it in .indices {
+                                            col {
+                                                style: "bg-card border border-border rounded-2xl p-3 gap-1 min-w-0 flex-1 items-center"
+                                                text it.name { style: "text-[10px] text-muted-foreground" }
+                                                text it.level { style: "text-sm font-semibold text-foreground" }
+                                                text it.note { style: "text-[9px] text-muted-foreground text-center" }
+                                            }
                                         }
                                     }
                                 }
@@ -698,6 +740,10 @@ widget App {
                 .daily = r.daily
                 .data_note = "实时数据 · Open-Meteo"
                 .source_label = "Open-Meteo"
+                .pm25 = r.pm25
+                .pm10 = r.pm10
+                .o3 = r.o3
+                .indices = r.indices
             }
             // PLAN-001：预填自定义城市（后端持久化；失败静默）
             let rc = cities_get()
@@ -737,7 +783,7 @@ widget App {
                     .search_subs.push(r.subs.get(i))
                     .search_lats.push(r.lats.get(i))
                     .search_lons.push(r.lons.get(i))
-                    .search_hits.push({ id: r.ids.get(i), name: r.names.get(i), sub: r.subs.get(i) })
+                    .search_hits.push({ id: r.ids.get(i), name: r.names.get(i), sub: r.subs.get(i), label: r.names.get(i) + " · " + r.subs.get(i) })
                     i = i + 1
                 }
             }
@@ -825,6 +871,31 @@ widget App {
                     .daily = r.daily
                     .data_note = "实时数据 · Open-Meteo"
                     .source_label = "Open-Meteo"
+                    .pm25 = r.pm25
+                    .pm10 = r.pm10
+                    .o3 = r.o3
+                    .indices = r.indices
+                }
+            }
+        }
+
+        // PLAN-002：删除自定义城市（响应即新表，同 AddHit 物化模式）
+        .RemoveCustom(id) -> {
+            let r3 = cities_remove(id)
+            if r3.ok {
+                .custom_ids = []
+                .custom_names = []
+                .custom_lats = []
+                .custom_lons = []
+                .custom_pills = []
+                var j int = 0
+                for x in r3.ids {
+                    .custom_ids.push(r3.ids.get(j))
+                    .custom_names.push(r3.names.get(j))
+                    .custom_lats.push(r3.lats.get(j))
+                    .custom_lons.push(r3.lons.get(j))
+                    .custom_pills.push({ id: r3.ids.get(j), name: r3.names.get(j) })
+                    j = j + 1
                 }
             }
         }
@@ -1029,6 +1100,10 @@ widget App {
                 .daily = r.daily
                 .data_note = "实时数据 · Open-Meteo"
                 .source_label = "Open-Meteo"
+                .pm25 = r.pm25
+                .pm10 = r.pm10
+                .o3 = r.o3
+                .indices = r.indices
             }
         }
 
@@ -1054,6 +1129,10 @@ widget App {
                 .daily = r.daily
                 .data_note = "实时数据 · Open-Meteo"
                 .source_label = "Open-Meteo"
+                .pm25 = r.pm25
+                .pm10 = r.pm10
+                .o3 = r.o3
+                .indices = r.indices
             }
             .refreshing = false
         }

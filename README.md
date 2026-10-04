@@ -26,6 +26,9 @@ auto run -r vm
 - **城市搜索**（PLAN-001）：横屏布局顶部输入任意城市（中文/拼音）→ 点击
   结果添加为自定义城市 pill，点击 pill 查看真实天气；列表经后端持久化到
   `local_data_dir`，跨启动保留。
+- **生活指数与空气详情**（PLAN-002）："生活指数"区展示穿衣/洗车/运动/感冒/
+  紫外线（本地推导）；当前详情含 PM2.5/PM10/O3 组分；自定义城市 pill 带
+  ✕ 可删除。
 - **QWeather**：自定义 API Host 已实证只认新平台 JWT
   （`Authorization: Bearer <JWT>`），Key ID 本身不是 token；纯 `.at` 侧
   暂无 Ed25519/ES256 签名原语，待 auto-lang crypto 面或外部 token 服务

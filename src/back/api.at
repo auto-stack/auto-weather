@@ -187,8 +187,39 @@ fn pad2(n int) str {
     return n.str()
 }
 
-// 坐标 → 2dp 文本（全整数运算；截断取向与 fmt_latlon 的 round 分开：
-// 这里 v100 先 round 到整百内，再截断拆段）
+// 原始 JSON 文本扫描数字数组（for-in 循环变量的数字字段读出面中毒
+// ——字符串/点访问正常，saturation/garbage 双重实证；改为对 raw 文本
+// 做 key 定位 + 纯字符串截取，100% 已证面）
+fn scan_numlist(raw str, key str) []str {
+    var out []str = []
+    var rest str = raw
+    while rest.find(key) >= 0 {
+        let pos int = rest.find(key)
+        let tail str = rest.sub(pos + key.len(), rest.len())
+        let end int = tail.find(",")
+        if end < 0 {
+            rest = ""
+        } else {
+            out.push(latlon_2dp(tail.sub(0, end)))
+            rest = tail.sub(end, tail.len())
+        }
+    }
+    return out
+}
+
+// 原始十进制串 → 2dp 文本（纯字符串运算；loop-var 数字字段的 float 面
+// 会装箱中毒——saturation 实证，见 PLAN-002 记录）
+fn latlon_2dp(raw str) str {
+    let dot int = raw.find(".")
+    if dot < 0 { return raw + ".00" }
+    let ip str = raw.sub(0, dot)
+    var fp str = raw.sub(dot + 1, raw.len())
+    if fp.len() >= 2 { return ip + "." + fp.sub(0, 2) }
+    if fp.len() == 1 { return ip + "." + fp + "0" }
+    return ip + ".00"
+}
+
+// 坐标 → 2dp 文本（全整数运算；report 路径用，search 路径走 latlon_2dp）
 fn fmt_latlon(f float) str {
     let v100 int = f2i(f * 100.0 + 0.5)
     let ip int = v100 / 100
@@ -320,6 +351,11 @@ fn impl_search(q str) SearchOut {
         }
         let rs = v.results
         if rs != nil {
+            // 坐标走 raw 文本扫描（循环变量数字字段中毒实证——见
+            // scan_numlist 注记）；名称/副标题走 for-in 字符串面
+            let glats []str = scan_numlist(raw, "\"latitude\":")
+            let glons []str = scan_numlist(raw, "\"longitude\":")
+            var gi int = 0
             for r in rs {
                 let nm str = "" + r.name
                 var sub str = "" + r.country
@@ -327,15 +363,20 @@ fn impl_search(q str) SearchOut {
                 if a1 != nil {
                     sub = sub + " " + a1
                 }
-                let latf float = r.latitude
-                let lonf float = r.longitude
-                let lats str = fmt_latlon(latf)
-                let lons str = fmt_latlon(lonf)
+                var lats str = "0.00"
+                var lons str = "0.00"
+                if gi < glats.len() {
+                    lats = glats.get(gi)
+                }
+                if gi < glons.len() {
+                    lons = glons.get(gi)
+                }
                 out.ids.push(lats + "_" + lons)
                 out.names.push(nm)
                 out.subs.push(sub)
                 out.lats.push(lats)
                 out.lons.push(lons)
+                gi = gi + 1
             }
         }
         out.ok = true

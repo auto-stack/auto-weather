@@ -181,6 +181,69 @@ def find_input(snapshot: str) -> str | None:
     return None
 
 
+def find_all_clickables(snapshot: str, label: str) -> list[str]:
+    """Collect every clickable element id whose block mentions label."""
+    pattern_id = re.compile(r"#(aura_\d+|vnode_\d+)")
+    nodes = []
+    current_id = None
+    current_block: list[str] = []
+    for line in snapshot.splitlines():
+        m = pattern_id.search(line)
+        if m:
+            if current_id and current_block:
+                nodes.append((current_id, current_block))
+            current_id = m.group(1)
+            current_block = [line]
+        elif current_id:
+            current_block.append(line)
+    if current_id and current_block:
+        nodes.append((current_id, current_block))
+    out = []
+    for nid, block in nodes:
+        text = "\n".join(block)
+        if label in text and (
+            "onclick" in text or "button" in text.lower() or "Button" in text
+        ):
+            out.append(nid)
+    return out
+
+
+def find_smallest_clickable(snapshot: str, label: str) -> str | None:
+    """Among clickable blocks containing label, pick the smallest block.
+
+    Parent nodes' blocks include their children's text, so first-match picks
+    ancestors — clicking those can hit window chrome. Deepest match wins.
+    """
+    pattern_id = re.compile(r"#(aura_\d+|vnode_\d+)")
+    nodes = []
+    current_id = None
+    current_block: list[str] = []
+    for line in snapshot.splitlines():
+        m = pattern_id.search(line)
+        if m:
+            if current_id and current_block:
+                nodes.append((current_id, current_block))
+            current_id = m.group(1)
+            current_block = [line]
+        elif current_id:
+            current_block.append(line)
+    if current_id and current_block:
+        nodes.append((current_id, current_block))
+    best = None
+    best_len = None
+    for nid, block in nodes:
+        text = "\n".join(block)
+        if label not in text:
+            continue
+        if not ("onclick" in text or "button" in text.lower() or "Button" in text):
+            continue
+        n = len(block)
+        if best_len is None or n < best_len:
+            best = nid
+            best_len = n
+    return best
+
+
 def main() -> int:
     # GBK 控制台打印含 ✓/emoji 的日志尾部会炸——统一容错编码
     try:
@@ -469,6 +532,86 @@ def main() -> int:
         except Exception as e:
             results.append(("T7 search/custom city", False))
             print(f"  FAIL: T7 {e}")
+            failed += 1
+
+        print("\n=== T8 life indices, AQI components, city removal (PLAN-002) ===")
+        try:
+            # T4 把布局留在竖屏——先回横屏（搜索区/指数区均在横屏）
+            lid = find_clickable_for_label(mcp.snapshot(), "横屏")
+            if lid:
+                mcp.click(lid)
+                time.sleep(1.2)
+
+            # ① 生活指数渲染（T7 后青岛已选中）
+            snap_t8 = mcp.snapshot()
+            ok_idx = "穿衣" in snap_t8
+            results.append(("indices rendered (穿衣)", ok_idx))
+            print(f"  {'PASS' if ok_idx else 'FAIL'}: indices section visible")
+            if not ok_idx:
+                failed += 1
+            st_i = mcp.state("indices")
+            print(f"  indices state: {st_i[:280]}")
+
+            # ② PM 组分在线非 —
+            st_pm = mcp.state("pm25", "pm10", "o3")
+            print(f"  pm state: {st_pm[:260]}")
+            ok_pm = "—" not in st_pm
+            results.append(("pm25/pm10/o3 live values", ok_pm))
+            print(f"  {'PASS' if ok_pm else 'FAIL'}: pm components")
+            if not ok_pm:
+                failed += 1
+
+            # ③ 搜索副标题（F-001）：搜索青岛 → 快照含"山东"
+            snap = mcp.snapshot()
+            iid = find_input(snap)
+            mcp.call("autoui_type", element_id=iid, text="青岛")
+            time.sleep(0.5)
+            bid = find_clickable_for_label(mcp.snapshot(), "搜索")
+            mcp.click(bid)
+            time.sleep(4.0)
+            snap3 = mcp.snapshot()
+            ok_sub = "山东" in snap3
+            results.append(("search hit shows subtitle (山东)", ok_sub))
+            print(f"  {'PASS' if ok_sub else 'FAIL'}: subtitle rendered")
+            if not ok_sub:
+                failed += 1
+
+            # ④ 添加大连 → 其 ✕ 删除（青岛保留 = 定向删除实证）
+            mcp.call("autoui_type", element_id=iid, text="大连")
+            time.sleep(0.5)
+            mcp.click(find_clickable_for_label(mcp.snapshot(), "搜索"))
+            time.sleep(4.0)
+            snap4 = mcp.snapshot()
+            hit = find_smallest_clickable(snap4, "大连")
+            print(f"  大连 hit element: {hit}")
+            if not hit:
+                raise RuntimeError("no 大连 hit clickable")
+            mcp.click(hit)
+            time.sleep(2.5)
+            st_diag = mcp.state("search_err", "search_q", "search_ids", "custom_ids", "custom_names")
+            print(f"  post-add diag: {st_diag[:700]}")
+            st_add = mcp.state("custom_names")
+            ok_added_dl = "大连" in st_add
+            results.append(("AddHit 大连", ok_added_dl))
+            print(f"  {'PASS' if ok_added_dl else 'FAIL'}: 大连 added")
+            if not ok_added_dl:
+                failed += 1
+            xids = find_all_clickables(mcp.snapshot(), "✕")
+            print(f"  remove buttons: {len(xids)}")
+            if not xids:
+                raise RuntimeError("no remove button")
+            mcp.click(xids[-1])
+            time.sleep(2.0)
+            st_rm = mcp.state("custom_names")
+            print(f"  after remove: {st_rm[:250]}")
+            ok_rm = ("大连" not in st_rm) and ("青岛" in st_rm)
+            results.append(("RemoveCustom 大连 (青岛 kept)", ok_rm))
+            print(f"  {'PASS' if ok_rm else 'FAIL'}: targeted removal")
+            if not ok_rm:
+                failed += 1
+        except Exception as e:
+            results.append(("T8 indices/pm/removal", False))
+            print(f"  FAIL: T8 {e}")
             failed += 1
 
     finally:
