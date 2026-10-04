@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-002
-status: execution_done
+status: reviewed
 feature_name: 生活指数、空气详情与城市管理（删除）
 author: [agent]
 created_at: 2026-10-04T06:30:00Z
@@ -160,6 +160,25 @@ AutoLang .at（`#[api]`/widget/VM merged）、Open-Meteo Air Quality API
   §6 配方清单第 8 条，后续 PLAN 直接遵守；A4 快照父子块污染——
   find_smallest_clickable + 末位 ✕ 选择；A5 测试期 cities.json 污染
   数据按运行时状态清理（非仓库数据）。
+- `stage: review | PLAN-002 | rev 1 | outcome: pass |
+  reviewed_commit: 8ee25b1ed51f4c11245f38b61dff4fd2f4bcf458 |
+  base_commit: a14775591150d36cfbdc4549a032142719da1f88 |
+  dependency_revisions: auto-lang 168b56923（仅验证工具链，无源码改动）|
+  spec_inputs: docs/specs/weather-app.md（worktree 含 SD-01）、README.md
+  （worktree 含 SD-02）——增量已核：文本描述当前行为与持久决策，未发布 |
+  acceptance_results: AC-01 pass（T8 ① 快照含穿衣 + indices 5×vmref）/
+  AC-02 pass（T8 ② o3 36/pm10 22/pm25 21 实测）/ AC-03 pass（T8 ④ 删大连
+  留青岛，末位 ✕ 定向 + 响应重建持久化）/ AC-04 pass（T8 ③ 快照含山东）/
+  AC-05 pass（复审复现 worktree vm_smoke 26/26 exit 0）/ AC-06 pass
+  （SD-01/02 文件核查，commit 8ee25b1）|
+  findings: F-001 info——指数 note 为通用文案（"未来12小时降水"），未随
+  数据个性化，非 AC 约束；F-002 info——PM 行/指数区仅横屏（口径内，
+  竖屏归 PLAN-004）；F-003 info——scan_numlist 依赖 geocoding 紧凑 JSON
+  形态（`"latitude":` 后紧跟数值逗号），有守卫降级（失配 → "0.00"），
+  换 provider 时需重估。均无阻塞 |
+  evidence: 复审复现 /tmp/review2-smoke.out（26/26）；worktree 零脏文件；
+  worktree 定位 git worktree list 实证 | next: merge`。复审局限声明：
+  复审与实施同会话，结论全部经工件与复现命令重建。
 
 ## 10. 待澄清事项
 
