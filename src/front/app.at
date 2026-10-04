@@ -57,7 +57,7 @@ style aqi_mid = "text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-prima
 // r.ok=false，全场保留下方演示样本（渐进降级，与 027-file-manager 同构）。
 // PLAN-001：城市搜索/自定义城市/任意坐标报文（平行 str 数组 + 索引循环
 // 物化——os-config VG12-14 终版 API 形状规则）。
-use back.api: weather_report, weather_search, cities_get, cities_add, cities_remove, weather_report_at
+use back.api: weather_report, weather_search, cities_get, cities_add, cities_remove, weather_report_at, settings_get, settings_set, cities_move
 
 widget App {
     msg {
@@ -69,6 +69,11 @@ widget App {
         SetLayout(str),
         SetForecastTab(str),
         RemoveCustom(str),
+        ToggleSettings,
+        SetTempUnit(str),
+        SetWindUnit(str),
+        CycleDefaultCity,
+        MoveCustom(str, str),
         Init
     }
 
@@ -125,6 +130,13 @@ widget App {
         var alert_text str = ""
         // PLAN-004：当前选中的自定义城市（""=内置城市；Refresh 据此分流）
         var active_custom str = ""
+        // PLAN-006：设置中心
+        var s_temp_unit str = "c"
+        var s_wind_unit str = "kmh"
+        var s_default_city str = "beijing"
+        // 带前缀的按钮 label（唯一可定位；视图 paren-expr 受限，handler 预拼）
+        var s_default_label str = "默认:beijing"
+        var settings_open bool = false
         var refreshing bool = false
         var hourly = [
             { time: "现在", icon: "⛅", temp: "23°", now: true },
@@ -198,6 +210,7 @@ widget App {
                         } else {
                             button "🌙" { onclick: .ToggleTheme, style: icon_btn }
                         }
+                        button "⚙️" { onclick: .ToggleSettings, style: icon_btn }
                     }
                 }
 
@@ -280,6 +293,57 @@ widget App {
                             for c in .custom_pills {
                                 button c.name { onclick: .SelectCustom(c.id), variant: "secondary", style: city_pill_off }
                                 button "✕" { onclick: .RemoveCustom(c.id), variant: "secondary", style: "w-6 h-6 text-[10px] items-center justify-center rounded-full bg-secondary text-muted-foreground hover:bg-secondary/80 transition-colors shrink-0" }
+                            }
+                        }
+                    }
+                }
+
+                // PLAN-006：设置中心（共享区，横竖屏皆可用；齿轮开合）
+                if .settings_open {
+                    col {
+                        style: "w-full gap-2 bg-card border border-border rounded-2xl p-3"
+                        text "设置" { style: section_title }
+                        row {
+                            style: "w-full items-center gap-2"
+                            text "温度单位" { style: "text-xs text-muted-foreground w-16 shrink-0" }
+                            if .s_temp_unit == "c" {
+                                button "°C" { onclick: .SetTempUnit("c"), variant: "primary", style: fc_tab_on }
+                            } else {
+                                button "°C" { onclick: .SetTempUnit("c"), variant: "secondary", style: fc_tab_off }
+                            }
+                            if .s_temp_unit == "f" {
+                                button "°F" { onclick: .SetTempUnit("f"), variant: "primary", style: fc_tab_on }
+                            } else {
+                                button "°F" { onclick: .SetTempUnit("f"), variant: "secondary", style: fc_tab_off }
+                            }
+                        }
+                        row {
+                            style: "w-full items-center gap-2"
+                            text "风速单位" { style: "text-xs text-muted-foreground w-16 shrink-0" }
+                            if .s_wind_unit == "kmh" {
+                                button "km/h" { onclick: .SetWindUnit("kmh"), variant: "primary", style: fc_tab_on }
+                            } else {
+                                button "km/h" { onclick: .SetWindUnit("kmh"), variant: "secondary", style: fc_tab_off }
+                            }
+                            if .s_wind_unit == "ms" {
+                                button "m/s" { onclick: .SetWindUnit("ms"), variant: "primary", style: fc_tab_on }
+                            } else {
+                                button "m/s" { onclick: .SetWindUnit("ms"), variant: "secondary", style: fc_tab_off }
+                            }
+                        }
+                        row {
+                            style: "w-full items-center gap-2"
+                            text "默认城市" { style: "text-xs text-muted-foreground w-16 shrink-0" }
+                            button .s_default_label { onclick: .CycleDefaultCity, variant: "secondary", style: fc_tab_off }
+                        }
+                        // 城市管理：排序（↑↓）+ 删除（✕）
+                        for c in .custom_pills {
+                            row {
+                                style: "w-full items-center gap-2"
+                                button c.name { onclick: .SelectCustom(c.id), variant: "secondary", style: "flex-1 justify-start px-3 py-1.5 text-xs rounded-full" }
+                                button "↑" { onclick: .MoveCustom(c.id, "up"), variant: "secondary", style: icon_btn }
+                                button "↓" { onclick: .MoveCustom(c.id, "down"), variant: "secondary", style: icon_btn }
+                                button "✕" { onclick: .RemoveCustom(c.id), variant: "secondary", style: icon_btn }
                             }
                         }
                     }
@@ -539,92 +603,6 @@ widget App {
                         col {
                             style: "w-full max-w-md mx-auto gap-3"
 
-                            // PLAN-004：竖屏功能对齐——预警 banner/搜索/城市条
-                            if .alert_title != "" {
-                                row {
-                                    style: "w-full items-center gap-2 px-3 py-2 rounded-2xl bg-amber-500/15 border border-amber-500/40"
-                                    text .alert_level { style: "text-xs font-bold text-amber-600 shrink-0" }
-                                    text .alert_title { style: "text-xs font-medium text-foreground" }
-                                }
-                            }
-                            row {
-                                style: "w-full items-center gap-2"
-                                input { placeholder: "搜索城市（中文/拼音）", value: .search_q, oninput: .SearchChanged, style: "flex-1 px-3 py-1.5 text-xs rounded-full border border-border bg-background text-foreground outline-none" }
-                                button "搜索" { onclick: .DoSearch, variant: "primary", style: refresh_idle }
-                            }
-                            if .search_err != "" {
-                                text .search_err { style: hint_text }
-                            }
-                            row {
-                                style: "w-full gap-2 flex-wrap"
-                                for h in .search_hits {
-                                    button h.label { onclick: .AddHit(h.id), variant: "secondary", style: city_pill_off }
-                                }
-                            }
-                            // 城市 pill 条（竖屏与横屏同构）
-                            col {
-                                style: "w-full h-11 shrink-0"
-                                scroll (axis: "x", style: "w-full h-full") {
-                                    row {
-                                        style: "items-center gap-2 h-full pr-2"
-                                        if .city_id == "beijing" {
-                                            button "北京" { onclick: .SelectCity("beijing"), variant: "primary", style: city_pill_on }
-                                        } else {
-                                            button "北京" { onclick: .SelectCity("beijing"), variant: "secondary", style: city_pill_off }
-                                        }
-                                        if .city_id == "shanghai" {
-                                            button "上海" { onclick: .SelectCity("shanghai"), variant: "primary", style: city_pill_on }
-                                        } else {
-                                            button "上海" { onclick: .SelectCity("shanghai"), variant: "secondary", style: city_pill_off }
-                                        }
-                                        if .city_id == "guangzhou" {
-                                            button "广州" { onclick: .SelectCity("guangzhou"), variant: "primary", style: city_pill_on }
-                                        } else {
-                                            button "广州" { onclick: .SelectCity("guangzhou"), variant: "secondary", style: city_pill_off }
-                                        }
-                                        if .city_id == "shenzhen" {
-                                            button "深圳" { onclick: .SelectCity("shenzhen"), variant: "primary", style: city_pill_on }
-                                        } else {
-                                            button "深圳" { onclick: .SelectCity("shenzhen"), variant: "secondary", style: city_pill_off }
-                                        }
-                                        if .city_id == "hangzhou" {
-                                            button "杭州" { onclick: .SelectCity("hangzhou"), variant: "primary", style: city_pill_on }
-                                        } else {
-                                            button "杭州" { onclick: .SelectCity("hangzhou"), variant: "secondary", style: city_pill_off }
-                                        }
-                                        if .city_id == "chengdu" {
-                                            button "成都" { onclick: .SelectCity("chengdu"), variant: "primary", style: city_pill_on }
-                                        } else {
-                                            button "成都" { onclick: .SelectCity("chengdu"), variant: "secondary", style: city_pill_off }
-                                        }
-                                        if .city_id == "xian" {
-                                            button "西安" { onclick: .SelectCity("xian"), variant: "primary", style: city_pill_on }
-                                        } else {
-                                            button "西安" { onclick: .SelectCity("xian"), variant: "secondary", style: city_pill_off }
-                                        }
-                                        if .city_id == "wuhan" {
-                                            button "武汉" { onclick: .SelectCity("wuhan"), variant: "primary", style: city_pill_on }
-                                        } else {
-                                            button "武汉" { onclick: .SelectCity("wuhan"), variant: "secondary", style: city_pill_off }
-                                        }
-                                        if .city_id == "harbin" {
-                                            button "哈尔滨" { onclick: .SelectCity("harbin"), variant: "primary", style: city_pill_on }
-                                        } else {
-                                            button "哈尔滨" { onclick: .SelectCity("harbin"), variant: "secondary", style: city_pill_off }
-                                        }
-                                        if .city_id == "sanya" {
-                                            button "三亚" { onclick: .SelectCity("sanya"), variant: "primary", style: city_pill_on }
-                                        } else {
-                                            button "三亚" { onclick: .SelectCity("sanya"), variant: "secondary", style: city_pill_off }
-                                        }
-                                        for c in .custom_pills {
-                                            button c.name { onclick: .SelectCustom(c.id), variant: "secondary", style: city_pill_off }
-                                            button "✕" { onclick: .RemoveCustom(c.id), variant: "secondary", style: "w-6 h-6 text-[10px] items-center justify-center rounded-full bg-secondary text-muted-foreground hover:bg-secondary/80 transition-colors shrink-0" }
-                                        }
-                                    }
-                                }
-                            }
-
                             // Hero
                             col {
                                 style: if .condition == "sunny" {
@@ -872,8 +850,35 @@ widget App {
         .Init -> {
             .layout_mode = "landscape"
             .forecast_tab = "hourly"
-            .city_id = "beijing"
+            // PLAN-006：先取设置（单位/默认城市），失败保默认
+            let rs = settings_get()
+            if rs.ok {
+                .s_temp_unit = rs.temp_unit
+                .s_wind_unit = rs.wind_unit
+                .s_default_city = rs.default_city
+                .s_default_label = "默认:" + rs.default_city
+            }
+            .city_id = .s_default_city
             .city_zh = "北京"
+            if .s_default_city == "shanghai" {
+                .city_zh = "上海"
+            } else if .s_default_city == "guangzhou" {
+                .city_zh = "广州"
+            } else if .s_default_city == "shenzhen" {
+                .city_zh = "深圳"
+            } else if .s_default_city == "hangzhou" {
+                .city_zh = "杭州"
+            } else if .s_default_city == "chengdu" {
+                .city_zh = "成都"
+            } else if .s_default_city == "xian" {
+                .city_zh = "西安"
+            } else if .s_default_city == "wuhan" {
+                .city_zh = "武汉"
+            } else if .s_default_city == "harbin" {
+                .city_zh = "哈尔滨"
+            } else if .s_default_city == "sanya" {
+                .city_zh = "三亚"
+            }
             .condition = "partly"
             .cond_zh = "多云"
             .icon = "⛅"
@@ -905,7 +910,7 @@ widget App {
             ]
             .updated_at = "14:30"
             // r10：起屏拉一次真实数据；失败静默保留上方演示样本
-            let r = weather_report(.city_id)
+            let r = weather_report(.city_id, .s_temp_unit, .s_wind_unit)
             if r.ok {
                 .condition = r.condition
                 .cond_zh = r.cond_zh
@@ -1042,7 +1047,7 @@ widget App {
             }
             if found {
                 .city_zh = nm
-                let r = weather_report_at(la, lo)
+                let r = weather_report_at(la, lo, .s_temp_unit, .s_wind_unit)
                 if r.ok {
                     .condition = r.condition
                     .cond_zh = r.cond_zh
@@ -1089,6 +1094,67 @@ widget App {
                     .custom_lats.push(r3.lats.get(j))
                     .custom_lons.push(r3.lons.get(j))
                     .custom_pills.push({ id: r3.ids.get(j), name: r3.names.get(j) })
+                    j = j + 1
+                }
+            }
+        }
+
+        // PLAN-006：设置中心 handler
+        .ToggleSettings -> {
+            .settings_open = !.settings_open
+        }
+
+        .SetTempUnit(u) -> {
+            .s_temp_unit = u
+            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city)
+        }
+
+        .SetWindUnit(u) -> {
+            .s_wind_unit = u
+            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city)
+        }
+
+        .CycleDefaultCity -> {
+            var nxt str = "beijing"
+            if .s_default_city == "beijing" {
+                nxt = "shanghai"
+            } else if .s_default_city == "shanghai" {
+                nxt = "guangzhou"
+            } else if .s_default_city == "guangzhou" {
+                nxt = "shenzhen"
+            } else if .s_default_city == "shenzhen" {
+                nxt = "hangzhou"
+            } else if .s_default_city == "hangzhou" {
+                nxt = "chengdu"
+            } else if .s_default_city == "chengdu" {
+                nxt = "xian"
+            } else if .s_default_city == "xian" {
+                nxt = "wuhan"
+            } else if .s_default_city == "wuhan" {
+                nxt = "harbin"
+            } else if .s_default_city == "harbin" {
+                nxt = "sanya"
+            }
+            .s_default_city = nxt
+            .s_default_label = "默认:" + nxt
+            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city)
+        }
+
+        .MoveCustom(id, dir) -> {
+            let rm = cities_move(id, dir)
+            if rm.ok {
+                .custom_ids = []
+                .custom_names = []
+                .custom_lats = []
+                .custom_lons = []
+                .custom_pills = []
+                var j int = 0
+                for x in rm.ids {
+                    .custom_ids.push(rm.ids.get(j))
+                    .custom_names.push(rm.names.get(j))
+                    .custom_lats.push(rm.lats.get(j))
+                    .custom_lons.push(rm.lons.get(j))
+                    .custom_pills.push({ id: rm.ids.get(j), name: rm.names.get(j) })
                     j = j + 1
                 }
             }
@@ -1276,7 +1342,7 @@ widget App {
                 { day: "周五", icon: "⛅", cond: "多云", tmin: .temp, tmax: .temp }
             ]
             // r10：切城后拉真实数据；失败保留上方该城演示样本
-            let r = weather_report(id)
+            let r = weather_report(id, .s_temp_unit, .s_wind_unit)
             if r.ok {
                 .condition = r.condition
                 .cond_zh = r.cond_zh
@@ -1328,7 +1394,7 @@ widget App {
                 }
                 if found {
                     did_custom = true
-                    let rc2 = weather_report_at(la, lo)
+                    let rc2 = weather_report_at(la, lo, .s_temp_unit, .s_wind_unit)
                     if rc2.ok {
                         .condition = rc2.condition
                         .cond_zh = rc2.cond_zh
@@ -1359,7 +1425,7 @@ widget App {
                 }
             }
             if !did_custom {
-                let r = weather_report(.city_id)
+                let r = weather_report(.city_id, .s_temp_unit, .s_wind_unit)
                 if r.ok {
                     .condition = r.condition
                     .cond_zh = r.cond_zh

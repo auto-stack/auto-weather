@@ -257,6 +257,17 @@ def main() -> int:
         print(f"ERROR: project not found: {_PROJECT}")
         return 2
 
+    # 运行时状态卫生：重置设置/城市持久化文件（跨运行 hermetic；属
+    # %APPDATA% 运行时数据，非仓库数据）。持久化正确性由 run 内断言覆盖。
+    _appd = os.environ.get("APPDATA")
+    if _appd:
+        _sd = Path(_appd) / "auto-weather"
+        for _f in ("settings.json", "cities.json"):
+            try:
+                (_sd / _f).unlink(missing_ok=True)
+            except Exception:
+                pass
+
     port = pick_free_port()
     url = f"http://127.0.0.1:{port}/mcp"
     log_path = Path(tempfile.gettempdir()) / f"weather-vm-smoke-{port}.log"
@@ -700,6 +711,115 @@ def main() -> int:
         except Exception as e:
             results.append(("T10 portrait/F-002/refresh", False))
             print(f"  FAIL: T10 {e}")
+            failed += 1
+
+        print("\n=== T11 settings center (PLAN-006) ===")
+        try:
+            gid = find_clickable_for_label(mcp.snapshot(), "⚙️")
+            print(f"  gear: {gid}")
+            if not gid:
+                raise RuntimeError("gear not found")
+            mcp.click(gid)
+            time.sleep(1.0)
+            snap_s = mcp.snapshot()
+            ok_open = "设置" in snap_s and "温度单位" in snap_s
+            results.append(("settings card opens", ok_open))
+            print(f"  {'PASS' if ok_open else 'FAIL'}: settings card")
+            if not ok_open:
+                failed += 1
+
+            fbtn = find_smallest_clickable(snap_s, "°F")
+            if not fbtn:
+                raise RuntimeError("°F button not found")
+            mcp.click(fbtn)
+            time.sleep(1.5)
+            msbtn = find_smallest_clickable(mcp.snapshot(), "m/s")
+            if not msbtn:
+                raise RuntimeError("m/s button not found")
+            mcp.click(msbtn)
+            time.sleep(1.5)
+            st_u = mcp.state("s_temp_unit", "s_wind_unit")
+            ok_units = '"f"' in st_u and '"ms"' in st_u
+            results.append(("units persisted (f/ms)", ok_units))
+            print(f"  {'PASS' if ok_units else 'FAIL'}: units set")
+            if not ok_units:
+                failed += 1
+
+            rid2 = find_clickable_for_label(mcp.snapshot(), "刷新")
+            mcp.click(rid2)
+            time.sleep(5.0)
+            snap_u = mcp.snapshot()
+            ok_eff = "°F" in snap_u and "m/s" in snap_u
+            results.append(("units effective after refresh", ok_eff))
+            print(f"  {'PASS' if ok_eff else 'FAIL'}: units effective")
+            if not ok_eff:
+                failed += 1
+
+            # 排序：↑↓ 仅存在于设置卡——保持卡打开；大连添加后卡内末行即大连
+            iid = find_input(mcp.snapshot())
+            mcp.call("autoui_type", element_id=iid, text="大连")
+            time.sleep(0.5)
+            mcp.click(find_clickable_for_label(mcp.snapshot(), "搜索"))
+            time.sleep(4.0)
+            hit = find_smallest_clickable(mcp.snapshot(), "大连")
+            mcp.click(hit)
+            time.sleep(2.5)
+            up_ids = find_all_clickables(mcp.snapshot(), "↑")
+            print(f"  up buttons: {len(up_ids)}")
+            if not up_ids:
+                raise RuntimeError("no up button")
+            mcp.click(up_ids[-1])
+            time.sleep(2.0)
+            st_ord = mcp.state("custom_names")
+            print(f"  order: {st_ord[:250]}")
+            ok_ord = "大连" in st_ord and "青岛" in st_ord and st_ord.find("大连") < st_ord.find("青岛")
+            results.append(("cities_move up (大连 before 青岛)", ok_ord))
+            print(f"  {'PASS' if ok_ord else 'FAIL'}: reorder")
+            if not ok_ord:
+                failed += 1
+
+            # 默认城市轮选（对当前值鲁棒——上轮崩溃可能遗留非 beijing）
+            cycle = ["beijing", "shanghai", "guangzhou", "shenzhen", "hangzhou",
+                     "chengdu", "xian", "wuhan", "harbin", "sanya"]
+            st_cur = mcp.state("s_default_city")
+            cur = "beijing"
+            for c in cycle:
+                if f'"{c}"' in st_cur:
+                    cur = c
+            nxt = cycle[(cycle.index(cur) + 1) % 10]
+            dbtn = find_smallest_clickable(mcp.snapshot(), "默认:" + cur)
+            if not dbtn:
+                raise RuntimeError("default city button not found")
+            mcp.click(dbtn)
+            time.sleep(1.2)
+            ok_d = f'"{nxt}"' in mcp.state("s_default_city")
+            results.append(("default city cycles", ok_d))
+            print(f"  {'PASS' if ok_d else 'FAIL'}: default city {cur}->{nxt}")
+            if not ok_d:
+                failed += 1
+            # 还原 beijing（跨运行卫生：T1 依赖缺省；最多 10 步带验证）
+            for _ in range(10):
+                st_c = mcp.state("s_default_city")
+                if '"beijing"' in st_c:
+                    break
+                cur_l = "beijing"
+                for c in cycle:
+                    if f'"{c}"' in st_c:
+                        cur_l = c
+                b = find_smallest_clickable(mcp.snapshot(), "默认:" + cur_l)
+                if not b:
+                    break
+                mcp.click(b)
+                time.sleep(0.8)
+            st_r = mcp.state("s_default_city")
+            ok_r = '"beijing"' in st_r
+            results.append(("default city restored (beijing)", ok_r))
+            print(f"  {'PASS' if ok_r else 'FAIL'}: default restored")
+            if not ok_r:
+                failed += 1
+        except Exception as e:
+            results.append(("T11 settings", False))
+            print(f"  FAIL: T11 {e}")
             failed += 1
 
     finally:

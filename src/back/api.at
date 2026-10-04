@@ -113,6 +113,15 @@ pub type CityListOut = {
     lons: []str
 }
 
+// PLAN-006 设置面（整对象替换；缺省 c/kmh/beijing）
+pub type SettingsOut = {
+    ok: bool
+    error: str
+    temp_unit: str
+    wind_unit: str
+    default_city: str
+}
+
 // ── 城市坐标表（内置城市 id → Open-Meteo 纬经度，2 位小数）──
 fn coords_for(city str) str {
     if city == "beijing" { return "39.90,116.40" }
@@ -269,7 +278,12 @@ fn fmt_latlon(f float) str {
     return ip.str() + "." + pad2(fp)
 }
 
-fn temp_s(f float) str {
+// PLAN-006：温度出口单点（ut=="f" 华氏；复合算术 let 中转，a2r 括号债规避）
+fn temp_s(f float, ut str) str {
+    if ut == "f" {
+        let c float = f * 1.8 + 32.0
+        return fmt_i(c) + "°F"
+    }
     return fmt_i(f) + "°"
 }
 
@@ -608,6 +622,196 @@ fn impl_cities_remove(id str) CityListOut {
     return out
 }
 
+// ── PLAN-006：设置面持久化（settings.json 整对象替换）──
+fn settings_path() str {
+    return cities_dir() + "/settings.json"
+}
+
+fn settings_defaults() SettingsOut {
+    return SettingsOut {
+        ok: true,
+        error: "",
+        temp_unit: "c",
+        wind_unit: "kmh",
+        default_city: "beijing"
+    }
+}
+
+fn impl_settings_get() SettingsOut {
+    let path str = settings_path()
+    if !file.exists(path) {
+        return settings_defaults()
+    }
+    let raw str = file.read_text(path)
+    if raw == "" {
+        return settings_defaults()
+    }
+    let v = json.parse(raw)
+    if v == nil {
+        var o SettingsOut = settings_defaults()
+        o.error = "settings parse failed"
+        return o
+    }
+    var out SettingsOut = settings_defaults()
+    let tu = v.temp_unit
+    if tu != nil {
+        out.temp_unit = "" + tu
+    }
+    let wu = v.wind_unit
+    if wu != nil {
+        out.wind_unit = "" + wu
+    }
+    let dc = v.default_city
+    if dc != nil {
+        out.default_city = "" + dc
+    }
+    return out
+}
+
+fn impl_settings_set(temp_unit str, wind_unit str, default_city str) SettingsOut {
+    var out SettingsOut = SettingsOut {
+        ok: false,
+        error: "",
+        temp_unit: temp_unit,
+        wind_unit: wind_unit,
+        default_city: default_city
+    }
+    if temp_unit != "c" && temp_unit != "f" {
+        out.error = "bad temp_unit"
+        return out
+    }
+    if wind_unit != "kmh" && wind_unit != "ms" {
+        out.error = "bad wind_unit"
+        return out
+    }
+    if coords_for(default_city) == "" {
+        out.error = "bad default_city"
+        return out
+    }
+    let txt str = "{\"temp_unit\":" + quote_json(temp_unit) + ",\"wind_unit\":" + quote_json(wind_unit) + ",\"default_city\":" + quote_json(default_city) + "}"
+    file.create_dir(cities_dir())
+    let w int = file.write_text(settings_path(), txt)
+    if w != 0 {
+        out.error = "settings write failed"
+        return out
+    }
+    out.ok = true
+    return out
+}
+
+// 读-定位-与相邻交换-重写（dir: up=前邻 / down=后邻）
+fn impl_cities_move(id str, dir str) CityListOut {
+    var out CityListOut = CityListOut {
+        ok: false,
+        error: "",
+        ids: [],
+        names: [],
+        lats: [],
+        lons: []
+    }
+    let path str = cities_path()
+    if !file.exists(path) {
+        out.ok = true
+        return out
+    }
+    let raw str = file.read_text(path)
+    if raw == "" {
+        out.ok = true
+        return out
+    }
+    let v = json.parse(raw)
+    if v == nil {
+        out.error = "cities parse failed"
+        return out
+    }
+    let cs = v.cities
+    if cs == nil {
+        out.ok = true
+        return out
+    }
+    // 物化（push-only）→ 定位 → 新列表按交换序 push → 写文件 → get 出响应。
+    // 注：list .set / 本地方列表整体赋给响应字段都会在 VM 边界退化成
+    // 数值句柄（[1360,1325] 与 [1361,1360] 双实证）——响应一律走
+    // impl_cities_get 的 push-only 通道。
+    var ids []str = []
+    var names []str = []
+    var lats []str = []
+    var lons []str = []
+    for c in cs {
+        ids.push("" + c.id)
+        names.push("" + c.name)
+        lats.push("" + c.lat)
+        lons.push("" + c.lon)
+    }
+    var idx int = -1
+    var i int = 0
+    while i < ids.len() {
+        if ids.get(i) == id {
+            idx = i
+        }
+        i = i + 1
+    }
+    var ids2 []str = []
+    var names2 []str = []
+    var lats2 []str = []
+    var lons2 []str = []
+    var j int = 0
+    while j < ids.len() {
+        var src int = j
+        if dir == "up" && idx > 0 {
+            if j == idx - 1 {
+                src = idx
+            } else if j == idx {
+                src = idx - 1
+            }
+        }
+        if dir == "down" && idx >= 0 && idx < ids.len() - 1 {
+            if j == idx + 1 {
+                src = idx
+            } else if j == idx {
+                src = idx + 1
+            }
+        }
+        ids2.push("" + ids.get(src))
+        names2.push("" + names.get(src))
+        lats2.push("" + lats.get(src))
+        lons2.push("" + lons.get(src))
+        j = j + 1
+    }
+    var txt str = "{\"cities\":["
+    var k int = 0
+    while k < ids2.len() {
+        if k != 0 { txt = txt + "," }
+        txt = txt + "{\"id\":" + quote_json(ids2.get(k)) + ",\"name\":" + quote_json(names2.get(k)) + ",\"lat\":" + quote_json(lats2.get(k)) + ",\"lon\":" + quote_json(lons2.get(k)) + "}"
+        k = k + 1
+    }
+    txt = txt + "]}"
+    let w int = file.write_text(path, txt)
+    if w != 0 {
+        out.error = "persist write failed"
+        return out
+    }
+    return impl_cities_get()
+}
+
+/// GET /api/weather/settings — 设置面
+#[api(method = "GET", path = "/api/weather/settings")]
+pub fn settings_get() SettingsOut {
+    return impl_settings_get()
+}
+
+/// POST /api/weather/settings — 整对象替换（body: temp_unit/wind_unit/default_city）
+#[api(method = "POST", path = "/api/weather/settings")]
+pub fn settings_set(temp_unit str, wind_unit str, default_city str) SettingsOut {
+    return impl_settings_set(temp_unit, wind_unit, default_city)
+}
+
+/// POST /api/weather/cities_move — 自定义城市排序（body: id/dir）
+#[api(method = "POST", path = "/api/weather/cities_move")]
+pub fn cities_move(id str, dir str) CityListOut {
+    return impl_cities_move(id, dir)
+}
+
 /// GET /api/weather/search?q= — 城市搜索（8 条，中文）
 #[api(method = "GET", path = "/api/weather/search")]
 pub fn weather_search(q str) SearchOut {
@@ -632,19 +836,19 @@ pub fn cities_remove(id str) CityListOut {
     return impl_cities_remove(id)
 }
 
-/// GET /api/weather/report?city=<内置 city_id> — 全量天气报告
+/// GET /api/weather/report?city=<内置 city_id>&ut=c|f&uw=kmh|ms — 全量天气报告
 #[api(method = "GET", path = "/api/weather/report")]
-pub fn weather_report(city str) ReportOut {
-    return impl_report(city)
+pub fn weather_report(city str, ut str, uw str) ReportOut {
+    return impl_report(city, ut, uw)
 }
 
-/// GET /api/weather/report_at?lat=<2dp>&lon=<2dp> — 任意坐标天气报告
+/// GET /api/weather/report_at?lat=<2dp>&lon=<2dp>&ut=&uw= — 任意坐标天气报告
 #[api(method = "GET", path = "/api/weather/report_at")]
-pub fn weather_report_at(lat str, lon str) ReportOut {
-    return impl_report_ll(lat, lon)
+pub fn weather_report_at(lat str, lon str, ut str, uw str) ReportOut {
+    return impl_report_ll(lat, lon, ut, uw)
 }
 
-fn impl_report(city str) ReportOut {
+fn impl_report(city str, ut str, uw str) ReportOut {
     let coords str = coords_for(city)
     if coords == "" {
         var o ReportOut = ReportOut {
@@ -679,10 +883,10 @@ fn impl_report(city str) ReportOut {
         return o
     }
     let ll = coords.split(",")
-    return impl_report_ll(ll[0], ll[1])
+    return impl_report_ll(ll[0], ll[1], ut, uw)
 }
 
-fn impl_report_ll(lat str, lon str) ReportOut {
+fn impl_report_ll(lat str, lon str, ut str, uw str) ReportOut {
     var out ReportOut = ReportOut {
         ok: false,
         error: "unknown error",
@@ -747,12 +951,17 @@ fn impl_report_ll(lat str, lon str) ReportOut {
         feels_f = cur.apparent_temperature
         uv_f = cur.uv_index
         precip_f = cur.precipitation
-        out.temp = temp_s(temp_f)
-        out.feels = temp_s(feels_f)
+        out.temp = temp_s(temp_f, ut)
+        out.feels = temp_s(feels_f, ut)
         out.humidity = fmt_i(cur.relative_humidity_2m) + "%"
         let spd int = f2i(cur.wind_speed_10m)
         let deg int = f2i(cur.wind_direction_10m)
-        out.wind = spd.str() + " km/h"
+        if uw == "ms" {
+            let spd_ms float = (cur.wind_speed_10m + 0.0) / 3.6
+            out.wind = fmt_i(spd_ms) + " m/s"
+        } else {
+            out.wind = spd.str() + " km/h"
+        }
         out.wind_dir = wind_dir_zh(deg)
         out.pressure = fmt_i(cur.pressure_msl) + " hPa"
         let vis_m float = cur.visibility
@@ -816,7 +1025,7 @@ fn impl_report_ll(lat str, lon str) ReportOut {
                     out.hourly.push(HourPoint {
                         time: label,
                         icon: icon_for(hcodes.get(i)),
-                        temp: temp_s(htemps.get(i)),
+                        temp: temp_s(htemps.get(i), ut),
                         now: out.hourly.len() == 0
                     })
                     // PLAN-003：同窗降水点（索引对齐三通道）
@@ -881,8 +1090,8 @@ fn impl_report_ll(lat str, lon str) ReportOut {
                     day: label,
                     icon: icon_for(dwc),
                     cond: cond_zh_for(dwc),
-                    tmin: temp_s(dmins.get(j)),
-                    tmax: temp_s(dmaxs.get(j))
+                    tmin: temp_s(dmins.get(j), ut),
+                    tmax: temp_s(dmaxs.get(j), ut)
                 })
                 j = j + 1
             }
