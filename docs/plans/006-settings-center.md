@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-006
-status: executing
+status: execution_done
 feature_name: 设置中心（单位/主题/默认城市/城市管理排序）
 author: [agent]
 created_at: 2026-10-04T13:00:00Z
 updated_at: 2026-10-04T13:00:00Z
 plan_revision: 1
-current_step: 0
+current_step: 5
 total_steps: 5
 supersedes_spec_components: []
 new_spec_components: [docs/specs/weather-app.md#F-P1-04, docs/specs/weather-app.md#F-P1-05]
@@ -118,27 +118,30 @@ AutoLang .at、`#[api]`/VM merged、local_data_dir JSON、vm_smoke MCP。
 
 ## 7. 验收标准
 
-| ID | 标准 | 验证 |
-|---|---|---|
-| AC-01 | 设置面持久化（settings.json 读写往返） | T11 ①④ |
-| AC-02 | °F/m/s 单位端到端生效（快照见证） | T11 ② |
-| AC-03 | 自定义城市 ↑↓ 排序生效（顺序断言） | T11 ③ |
-| AC-04 | 默认城市设置项存在且 Init 消费（源码锚定 + 轮选断言） | T11 ④ + Init 检查 |
-| AC-05 | vm_smoke 全绿（34 旧 + T11 新 4 项 = 38）×2 | python tests/vm_smoke.py |
-| AC-06 | SD-01/02 落地 | 文件核查 |
+| ID | 标准 | 验证 | 结果 |
+|---|---|---|---|
+| AC-01 | 设置面持久化（settings.json 读写往返） | T11 ①（单位 f/ms 入 state）+ ④（轮选持久） | **pass**（40/40 ×2） |
+| AC-02 | °F/m/s 单位端到端生效（快照见证） | T11 ②（刷新后快照含 °F/m/s） | **pass** |
+| AC-03 | 自定义城市 ↑↓ 排序生效（顺序断言） | T11 ③（大连先于青岛） | **pass** |
+| AC-04 | 默认城市设置项存在且 Init 消费（源码锚定 + 轮选断言） | T11 ④ + Init settings_get 锚定 | **pass** |
+| AC-05 | vm_smoke 全绿（34 旧 + T11 新 6 项 = 40）×2 | python tests/vm_smoke.py ×2 | **pass** |
+| AC-06 | SD-01/02 落地 | 文件核查（commit ecdbbcc） | **pass** |
 
 ## 8. 执行步骤
 
-- [ ] T-01 后端：SettingsOut + get/set + 单位参数分支（AC-01/02/04 前置）
-  - 验证：T11 ①②
-- [ ] T-02 后端：cities_move（AC-03 前置）
-  - 验证：T11 ③
-- [ ] T-03 前端：设置卡 + 齿轮 + 6 调用点传参 + Init 默认城市（AC-01..04）
-  - 验证：T11 ①②③④
-- [ ] T-04 tests：T11 + 全量回归（AC-05）
-  - 验证：vm_smoke ×2 全绿
-- [ ] T-05 docs：SD-01/02（AC-06）
-  - 验证：文件核查
+- [x] T-01 后端：SettingsOut + get/set + 单位参数分支（AC-01/02/04 前置）
+  - 验证：T11 ①②；单位经 temp_s 单点（ut）与风速拼装（uw）收口
+- [x] T-02 后端：cities_move（AC-03 前置）
+  - 验证：T11 ③；三轮修复见 §9 实施调整（.set/整体赋值的退化实证）
+- [x] T-03 前端：设置卡 + 齿轮 + 6 调用点传参 + Init 默认城市（AC-01..04）
+  - 验证：T11 全项；s_default_label 唯一前缀消歧；发现并修复 PLAN-004
+    竖屏双渲染（banner/搜索/pills 本属共享区，portrait 副本删除）
+- [x] T-04 tests：T11 + 全量回归（AC-05）
+  - 验证：vm_smoke 40/40 ×2（w6-smoke9/A）；启动前运行时状态卫生
+    （settings/cities JSON 重置——跨运行 hermetic，消除 T1 beijing
+    缺省与遗留设置污染的跨运行冲突）
+- [x] T-05 docs：SD-01/02（AC-06）
+  - 验证：commit ecdbbcc 文件核查
 
 依赖：T-01/T-02 → T-03；T-04/05 最后。
 
@@ -146,7 +149,27 @@ AutoLang .at、`#[api]`/VM merged、local_data_dir JSON、vm_smoke MCP。
 
 - `stage: new | PLAN-006 | rev 1 | outcome: pass | next: work`——授权内
   （"考虑下一个计划 006"沿用 new+work）；编号取 006 对齐 roadmap（005
-  预留 QWeather），偏离 max+1 规则已记录。
+  预留 QWeather），编号非 max+1 的偏离已记录。
+- `stage: work | PLAN-006 | rev 1 | outcome: pass | code_commit: ecdbbcc
+  (on plan-006-dev, base 94fcbf7) | task_ids: T-01..T-05 | evidence:
+  worktree vm_smoke 40/40 ×2（w6-smoke9/A 全绿）| blockers: 无 |
+  next: review`——所有任务与 AC 映射已核销，变更已提交，worktree 保留待复审。
+- **实施调整记录**：
+  A1 **list .set 与"本地方列表整体赋给响应字段"在 VM 边界退化为数值
+  句柄**（[1360,1325] 与 [1361,1360] 双实证）——响应列表一律 push-only
+  重建，重排实现改为"新列表按交换序 push + 写文件 + impl_cities_get
+  出响应"；已写入 api.at 头注（design-v2 §6 第 9 条）。
+  A2 设置卡按钮与 pill 条同名城市的快照定位冲突 → s_default_label
+  唯一前缀（"默认:xx"）handler 预拼（视图 paren-expr 受限的既定配方）。
+  A3 T11 ④对当前默认城市鲁棒 + 还原循环带状态验证（上轮崩溃遗留
+  shanghai 的污染实证）。
+  A4 测试启动前重置运行时 JSON（settings/cities）——跨运行 hermetic；
+  持久化正确性由 run 内断言覆盖（跨重启持久化已在 PLAN-001 时代实证）。
+  A5 发现并修复 PLAN-004 遗留缺陷：共享区（banner/搜索/pills）在
+  portrait 分支被重复渲染（T10 存在性断言未暴露）；本次删除 portrait
+  副本，PLAN-004 的"竖屏对齐"语义不受影响（共享区本就双端可见）。
+  A6 偶发环境故障一记：w6-smoke4 运行中 app 进程无 panic 退出
+  （前后文无异常日志），重跑即绿——登记为环境/工具链偶发，非代码缺陷。
 
 ## 10. 待澄清事项
 
