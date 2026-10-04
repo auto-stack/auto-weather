@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-003
-status: execution_done
+status: reviewed
 feature_name: 24小时降水展示与天气预警展示位
 author: [agent]
 created_at: 2026-10-04T09:00:00Z
@@ -141,6 +141,23 @@ AutoLang .at、`#[api]`/VM merged、Open-Meteo forecast
   （动态 style 绑定先例 + 降水参数可用性）使 T-02 一次通过；概率通道
   按 A3 教训直接走 raw 扫描（null 哨兵），未发生中毒返工。唯一操作事故：
   一次 Edit 吞换行致注释与下一行粘连，当轮修复（未留残）。
+- `stage: review | PLAN-003 | rev 1 | outcome: pass |
+  reviewed_commit: ce3a96517c9c03129ab42ea30fb45b8b7b703bc8 |
+  base_commit: 2938e118c26c5ca1680ea6b7847658dacb388a55 |
+  dependency_revisions: auto-lang 168b56923（仅验证工具链）|
+  spec_inputs: docs/specs/weather-app.md（worktree 含 SD-01）、README.md
+  （worktree 含 SD-02）——增量已核：描述当前行为与持久决策，未发布 |
+  acceptance_results: AC-01 pass（T9 ② precip=24）/ AC-02 pass（T9 ①③
+  区渲染+mm 标注）/ AC-03 pass（T9 ④ alert_title "" + banner 缺席快照）/
+  AC-04 pass（复审复现 worktree vm_smoke 31/31 exit 0）/ AC-05 pass
+  （SD-01/02 文件核查，commit ce3a965）|
+  findings: F-001 info——降水区仅横屏（口径内，竖屏归 PLAN-004）；
+  F-002 info——`\"precipitation\":` 扫描键依赖紧凑 JSON（同 PLAN-002
+  F-003 类别，已有守卫）；F-003 info——banner 单一琥珀配色，级别→配色
+  映射随 PLAN-005 真实预警落地。均无阻塞 |
+  evidence: 复审复现 /tmp/review3-smoke.out（31/31）；worktree 零脏文件；
+  git worktree list 实证 | next: merge`。复审局限声明：复审与实施同会话，
+  结论全部经工件与复现命令重建。
 
 ## 10. 待澄清事项
 
