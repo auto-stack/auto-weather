@@ -59,6 +59,8 @@ style aqi_mid = "text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-prima
 // 物化——os-config VG12-14 终版 API 形状规则）。
 use back.api: weather_report, weather_search, cities_get, cities_add, cities_remove, weather_report_at, settings_get, settings_set, cities_move
 
+// PLAN-007 i18n 占位：lang 贯穿取数链（label 变量化随 T-03 落地）
+
 widget App {
     msg {
         SelectCity(str),
@@ -137,6 +139,8 @@ widget App {
         // 带前缀的按钮 label（唯一可定位；视图 paren-expr 受限，handler 预拼）
         var s_default_label str = "默认:beijing"
         var settings_open bool = false
+        // PLAN-007：界面语言（zh/en；label 变量化后全面生效）
+        var lang str = "zh"
         var refreshing bool = false
         var hourly = [
             { time: "现在", icon: "⛅", temp: "23°", now: true },
@@ -857,6 +861,7 @@ widget App {
                 .s_wind_unit = rs.wind_unit
                 .s_default_city = rs.default_city
                 .s_default_label = "默认:" + rs.default_city
+                .lang = rs.lang
             }
             .city_id = .s_default_city
             .city_zh = "北京"
@@ -910,7 +915,7 @@ widget App {
             ]
             .updated_at = "14:30"
             // r10：起屏拉一次真实数据；失败静默保留上方演示样本
-            let r = weather_report(.city_id, .s_temp_unit, .s_wind_unit)
+            let r = weather_report(.city_id, .s_temp_unit, .s_wind_unit, .lang)
             if r.ok {
                 .condition = r.condition
                 .cond_zh = r.cond_zh
@@ -967,7 +972,7 @@ widget App {
             .search_subs = []
             .search_lats = []
             .search_lons = []
-            let r = weather_search(.search_q)
+            let r = weather_search(.search_q, .lang)
             if r.ok {
                 var i int = 0
                 for x in r.ids {
@@ -1047,7 +1052,7 @@ widget App {
             }
             if found {
                 .city_zh = nm
-                let r = weather_report_at(la, lo, .s_temp_unit, .s_wind_unit)
+                let r = weather_report_at(la, lo, .s_temp_unit, .s_wind_unit, .lang)
                 if r.ok {
                     .condition = r.condition
                     .cond_zh = r.cond_zh
@@ -1106,12 +1111,12 @@ widget App {
 
         .SetTempUnit(u) -> {
             .s_temp_unit = u
-            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city)
+            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city, .lang)
         }
 
         .SetWindUnit(u) -> {
             .s_wind_unit = u
-            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city)
+            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city, .lang)
         }
 
         .CycleDefaultCity -> {
@@ -1137,7 +1142,7 @@ widget App {
             }
             .s_default_city = nxt
             .s_default_label = "默认:" + nxt
-            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city)
+            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city, .lang)
         }
 
         .MoveCustom(id, dir) -> {
@@ -1342,7 +1347,7 @@ widget App {
                 { day: "周五", icon: "⛅", cond: "多云", tmin: .temp, tmax: .temp }
             ]
             // r10：切城后拉真实数据；失败保留上方该城演示样本
-            let r = weather_report(id, .s_temp_unit, .s_wind_unit)
+            let r = weather_report(id, .s_temp_unit, .s_wind_unit, .lang)
             if r.ok {
                 .condition = r.condition
                 .cond_zh = r.cond_zh
@@ -1394,7 +1399,7 @@ widget App {
                 }
                 if found {
                     did_custom = true
-                    let rc2 = weather_report_at(la, lo, .s_temp_unit, .s_wind_unit)
+                    let rc2 = weather_report_at(la, lo, .s_temp_unit, .s_wind_unit, .lang)
                     if rc2.ok {
                         .condition = rc2.condition
                         .cond_zh = rc2.cond_zh
@@ -1425,7 +1430,7 @@ widget App {
                 }
             }
             if !did_custom {
-                let r = weather_report(.city_id, .s_temp_unit, .s_wind_unit)
+                let r = weather_report(.city_id, .s_temp_unit, .s_wind_unit, .lang)
                 if r.ok {
                     .condition = r.condition
                     .cond_zh = r.cond_zh
