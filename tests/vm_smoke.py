@@ -476,7 +476,8 @@ def main() -> int:
             st6 = mcp.state("data_note", "source_label", "updated_at", "wind", "temp", "cond_zh", "humidity", "aqi", "aqi_level", "uv", "pressure", "visibility")
             print(f"  data state: {st6[:300]}")
             # 在线 → Open-Meteo；离线 → 演示样本。两者皆证明接线存在。
-            ok6 = "Open-Meteo" in st6 or "演示数据" in st6
+            # PLAN-005：source 双 provider 口径（QW 配置轮为 QWeather）
+            ok6 = "Open-Meteo" in st6 or "QWeather" in st6 or "演示数据" in st6
             results.append(("data_note/source_label wired", ok6))
             print(f"  {'PASS' if ok6 else 'FAIL'}: data source note present")
             if not ok6:
@@ -535,7 +536,7 @@ def main() -> int:
             time.sleep(5.0)
             st_sel = mcp.state("city_zh", "temp", "source_label")
             print(f"  after select: {st_sel[:300]}")
-            ok_sel = "青岛" in st_sel and "Open-Meteo" in st_sel
+            ok_sel = "青岛" in st_sel and ("Open-Meteo" in st_sel or "QWeather" in st_sel)
             results.append(("SelectCustom 青岛 real data", ok_sel))
             print(f"  {'PASS' if ok_sel else 'FAIL'}: custom city real weather")
             if not ok_sel:
@@ -703,7 +704,7 @@ def main() -> int:
             time.sleep(5.0)
             st_u = mcp.state("updated_at", "source_label", "city_zh")
             print(f"  after refresh: {st_u[:260]}")
-            ok_rf = "--:--" not in st_u and "Open-Meteo" in st_u and "青岛" in st_u
+            ok_rf = "--:--" not in st_u and ("Open-Meteo" in st_u or "QWeather" in st_u) and "青岛" in st_u
             results.append(("Refresh on custom city (report_at)", ok_rf))
             print(f"  {'PASS' if ok_rf else 'FAIL'}: custom refresh")
             if not ok_rf:
@@ -820,6 +821,32 @@ def main() -> int:
         except Exception as e:
             results.append(("T11 settings", False))
             print(f"  FAIL: T11 {e}")
+            failed += 1
+
+        print("\n=== T12 QWeather provider (PLAN-005, conditional) ===")
+        try:
+            # 与 app 语义一致：仅 env QWEATHER_KEY 触发 QW（无文件回退）
+            has_key = bool(os.environ.get("QWEATHER_KEY"))
+            st_s = mcp.state("source_label", "data_note", "aqi_level", "cond_zh")
+            print(f"  source state: {st_s[:300]}")
+            if has_key:
+                ok_qw = "QWeather" in st_s
+                tag = "QWeather active"
+            else:
+                ok_qw = "Open-Meteo" in st_s
+                tag = "open-meteo fallback"
+            results.append((f"provider source ({tag})", ok_qw))
+            print(f"  {'PASS' if ok_qw else 'FAIL'}: {tag}")
+            if not ok_qw:
+                failed += 1
+            ok_lv = ("优" in st_s) or ("良" in st_s) or ("—" in st_s)
+            results.append(("aqi level readable", ok_lv))
+            print(f"  {'PASS' if ok_lv else 'FAIL'}: aqi level")
+            if not ok_lv:
+                failed += 1
+        except Exception as e:
+            results.append(("T12 provider", False))
+            print(f"  FAIL: T12 {e}")
             failed += 1
 
     finally:

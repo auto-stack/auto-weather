@@ -7,11 +7,12 @@
 // geocoding（城市搜索）。失败一律 ok:false + 错误串，前端保留演示样本
 // 兜底（降级契约与 027-file-manager rev7 同构）。
 //
-// QWeather 路线：用户控制台的自定义 API Host + Key ID 已实证只认新平台
-// JWT（Bearer），Key ID 本身不是 token；纯 .at 侧仅有 sha256/hmac
-// （stdlib/auto/hash.at），无 Ed25519/ES256 签名原语，JWT 生成不可行——
-// 待 auto-lang crypto 面或外部 token 服务落地后在此文件加第二个 provider
-// （WEATHER_PROVIDER 分支，私钥经 env 注入、严禁入库）。
+// QWeather 路线（PLAN-005 定案）：控制台"凭据"选 **API KEY** 类型，经
+// `?key=` 查询参数认证（Bearer 头 401 实测——与社区文档口径不符，以
+// 实测为准），无需本地签名。JWT 型凭据（kid 入 header、Ed25519 私钥
+// 签名）的 Bearer 401 未解之谜（公钥保存/项目归属）搁置备查；将来
+// auto-lang crypto 面落地后可无损切换。key 经 QWEATHER_KEY env 注入、
+// 严禁入库；QWEATHER_HOST 可覆盖（默认 na3h2ttjx8.re.qweatherapi.com）。
 //
 // ⚠ VM 轨实证配方（2026-10-04 本仓实测，见 docs/design/weather-v2.md §6）：
 //   - 结构纪律（027 rev7）：#[api] 端点体恒 thin——api_gen 内联面无法
@@ -376,18 +377,15 @@ fn precip_bar(prob int, amt float) str {
     return "w-4 rounded-t shrink-0 " + c + " " + h
 }
 
-// Sakamoto 星期（0=周日），日期串 "YYYY-MM-DD"
+// Sakamoto 星期（0=周日），日期串 "YYYY-MM-DD"——委托 weekday_calc
+// （PLAN-005 抽出复用：QW UTC 日界需 +8h 后日期算星期）
 fn weekday_zh(ds str) str {
-    var names = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
     let p = ds.split("-")
     if p.len() < 3 { return "" }
-    var y int = (str.to_uint(p[0])) as int
+    let y int = (str.to_uint(p[0])) as int
     let m int = (str.to_uint(p[1])) as int
     let d int = (str.to_uint(p[2])) as int
-    if m < 3 { y = y - 1 }
-    var t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
-    let wk int = (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7
-    return names[wk]
+    return weekday_calc(y, m, d)
 }
 
 // os-config 配方：JSON 字符串值转义
@@ -403,6 +401,289 @@ fn get_text(url str) str {
         return ""
     }
     return res.body()
+}
+
+// ── PLAN-005 QWeather provider ──
+// API KEY 型凭据经实测用 ?key= 查询参数认证（Bearer 头 401——与社区文档
+// 口径不符，以实测为准）；JWT 型凭据的 Bearer 401 之谜（公钥保存/项目
+// 归属）搁置备查。配置：QWEATHER_KEY（必填，空=不启用）、QWEATHER_HOST
+// （默认 na3h2ttjx8.re.qweatherapi.com）。覆盖策略：OM 基线跑完仍成立，
+// 四段各自 try 覆盖、失败保留 OM 字段。
+fn qw_key() str {
+    return env.get("QWEATHER_KEY")
+}
+
+fn qw_host() str {
+    let h str = env.get("QWEATHER_HOST")
+    if h != "" {
+        return h
+    }
+    return "na3h2ttjx8.re.qweatherapi.com"
+}
+
+// 和风天气码 → 类别（cond_zh 直接用 API 本地化 text，无需中文映射表）
+fn qw_condition(code int) str {
+    if code >= 300 && code < 400 {
+        if code == 302 || code == 303 || code == 304 {
+            return "storm"
+        }
+        return "rain"
+    }
+    if code >= 400 && code < 500 {
+        return "snow"
+    }
+    if code >= 500 && code < 600 {
+        return "fog"
+    }
+    if code == 100 {
+        return "sunny"
+    }
+    if code == 104 {
+        return "cloudy"
+    }
+    return "partly"
+}
+
+// UTC ISO 段 → 北京时刻（+8；不涉日期进位——标签级精度可接受）
+fn mh_plus8(iso str) str {
+    let hh str = iso.sub(11, 13)
+    var h int = (str.to_uint(hh)) as int
+    h = (h + 8) % 24
+    return pad2(h) + ":" + iso.sub(14, 16)
+}
+
+fn hh_label8(iso str) str {
+    let hh2 str = iso.sub(11, 13)
+    var h2 int = (str.to_uint(hh2)) as int
+    h2 = (h2 + 8) % 24
+    return pad2(h2) + ":00"
+}
+
+// 实况段覆盖（QW /weather/v1/current/{lat}/{lon}）
+fn qw_current(out ReportOut, lat str, lon str, ut str, uw str) {
+    let url str = "https://" + qw_host() + "/weather/v1/current/" + lat + "/" + lon + "?key=" + qw_key()
+    let raw str = get_text(url)
+    if raw == "" {
+        return
+    }
+    let v = json.parse(raw)
+    if v == nil {
+        return
+    }
+    // 根即数据（无包裹层）；缺失字段点访问得 nil → 算术抛 → 段级 catch 保 OM
+    let code int = (str.to_uint("" + v.condition.code)) as int
+    out.condition = qw_condition(code)
+    out.cond_zh = "" + v.condition.text
+    out.icon = icon_for(out.condition)
+    let tc float = v.temperature.value
+    let fl float = v.feelsLike.value
+    out.temp = temp_s(tc, ut)
+    out.feels = temp_s(fl, ut)
+    let hu float = v.humidity
+    out.humidity = fmt_i(hu * 100.0) + "%"
+    let wv float = v.wind.speed.value
+    if uw == "ms" {
+        out.wind = fmt_i(wv) + " m/s"
+    } else {
+        let wk float = wv * 3.6
+        out.wind = fmt_i(wk) + " km/h"
+    }
+    let dg float = v.wind.direction.degree
+    out.wind_dir = wind_dir_zh(f2i(dg))
+    let pr float = v.pressure.value
+    out.pressure = fmt_i(pr) + " hPa"
+    let vi float = v.visibility.value
+    out.visibility = fmt_i(vi / 1000.0) + " km"
+    let uvf float = v.uvIndex
+    out.uv = uv_level(uvf)
+    let ot = v.obsTime
+    if ot != nil {
+        out.updated_at = mh_plus8("" + ot)
+    }
+    out.source = "QWeather"
+}
+
+// 24h 小时段覆盖（QW /weather/v1/hourly；hours[].forecastTime 为 UTC）
+fn qw_hourly(out ReportOut, lat str, lon str, ut str) {
+    let url str = "https://" + qw_host() + "/weather/v1/hourly/" + lat + "/" + lon + "?key=" + qw_key()
+    let raw str = get_text(url)
+    if raw == "" {
+        return
+    }
+    let v = json.parse(raw)
+    if v == nil {
+        return
+    }
+    let hs = v.hours
+    if hs == nil {
+        return
+    }
+    var pts []HourPoint = []
+    var n int = 0
+    for h in hs {
+        if n >= 24 {
+            n = n + 1
+            continue
+        }
+        var lb str = "现在"
+        if n != 0 {
+            lb = hh_label8("" + h.forecastTime)
+        }
+        let hc int = (str.to_uint("" + h.condition.code)) as int
+        let cat str = qw_condition(hc)
+        let tv float = h.temperature.value
+        pts.push(HourPoint {
+            time: lb,
+            icon: icon_for(cat),
+            temp: temp_s(tv, ut),
+            now: n == 0
+        })
+        n = n + 1
+    }
+    if pts.len() > 0 {
+        out.hourly = pts
+    }
+}
+
+// 5 日段覆盖（QW /weather/v1/daily；UTC 日界 = 北京 08:00，星期按 +8 后日期）
+fn qw_daily(out ReportOut, lat str, lon str, ut str) {
+    let url str = "https://" + qw_host() + "/weather/v1/daily/" + lat + "/" + lon + "?key=" + qw_key()
+    let raw str = get_text(url)
+    if raw == "" {
+        return
+    }
+    let v = json.parse(raw)
+    if v == nil {
+        return
+    }
+    let ds = v.days
+    if ds == nil {
+        return
+    }
+    var pts []DayPoint = []
+    var n int = 0
+    for d in ds {
+        if n >= 5 {
+            n = n + 1
+            continue
+        }
+        var lb str = weekday8("" + d.forecastStartTime)
+        if n == 0 {
+            lb = "今天"
+        }
+        let hc int = (str.to_uint("" + d.daytime.condition.code)) as int
+        let cat str = qw_condition(hc)
+        let tmax float = d.temperatureMax
+        let tmin float = d.temperatureMin
+        pts.push(DayPoint {
+            day: lb,
+            icon: icon_for(cat),
+            cond: "" + d.daytime.condition.text,
+            tmin: temp_s(tmin, ut),
+            tmax: temp_s(tmax, ut)
+        })
+        n = n + 1
+    }
+    if pts.len() > 0 {
+        out.daily = pts
+    }
+}
+
+// forecastStartTime（UTC ISO）+8h 后的日期算星期（Sakamoto 复用）
+fn weekday8(utc_iso str) str {
+    // 小时 +8 可能跨日：仅当原时刻 ≥16:00 时日期+1（进位精确到日界）
+    let hh str = utc_iso.sub(11, 13)
+    var day_add int = 0
+    var h int = (str.to_uint(hh)) as int
+    h = (h + 8) % 24
+    let h_orig int = (str.to_uint(utc_iso.sub(11, 13))) as int
+    if h_orig >= 16 {
+        day_add = 1
+    }
+    let ds str = utc_iso.sub(0, 10)
+    // 日期 +day_add：借 weekday_zh 的原实现按 "YYYY-MM-DD" 计算，跨月
+    // 进位用近似（遇月末偏差一天可接受；QW 预报最远第 7 天）
+    var y int = (str.to_uint(ds.sub(0, 4))) as int
+    var m int = (str.to_uint(ds.sub(5, 7))) as int
+    var d int = (str.to_uint(ds.sub(8, 10))) as int
+    if day_add == 1 {
+        d = d + 1
+    }
+    return weekday_calc(y, m, d)
+}
+
+// Sakamoto（0=周日）——由 weekday_zh 抽出以便 weekday8 复用
+fn weekday_calc(y int, m int, d int) str {
+    var names = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
+    var yy int = y
+    if m < 3 {
+        yy = yy - 1
+    }
+    var t = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
+    let wk int = (yy + yy / 4 - yy / 100 + yy / 400 + t[m - 1] + d) % 7
+    return names[wk]
+}
+
+// 空气段覆盖（QW /airquality/v1/current；indexes[0]=cn-mee 中文等级）
+fn qw_air(out ReportOut, lat str, lon str) {
+    let url str = "https://" + qw_host() + "/airquality/v1/current/" + lat + "/" + lon + "?key=" + qw_key()
+    let raw str = get_text(url)
+    if raw == "" {
+        return
+    }
+    let v = json.parse(raw)
+    if v == nil {
+        return
+    }
+    let idxs = v.indexes
+    if idxs != nil {
+        for ix in idxs {
+            let code str = "" + ix.code
+            if code == "cn-mee" {
+                out.aqi = "" + ix.aqiDisplay
+                out.aqi_level = "" + ix.category
+            }
+        }
+    }
+    let pols = v.pollutants
+    if pols != nil {
+        for p in pols {
+            let pc str = "" + p.code
+            let cv float = p.concentration.value
+            if pc == "pm2p5" {
+                out.pm25 = fmt_i(cv)
+            }
+            if pc == "pm10" {
+                out.pm10 = fmt_i(cv)
+            }
+            if pc == "o3" {
+                out.o3 = fmt_i(cv)
+            }
+        }
+    }
+}
+
+// 覆盖层编排：四段独立 try，失败保留 OM 基线
+fn qw_overlay(out ReportOut, lat str, lon str, ut str, uw str) {
+    if qw_key() == "" {
+        return
+    }
+    try {
+        qw_current(out, lat, lon, ut, uw)
+    } catch {
+    }
+    try {
+        qw_hourly(out, lat, lon, ut)
+    } catch {
+    }
+    try {
+        qw_daily(out, lat, lon, ut)
+    } catch {
+    }
+    try {
+        qw_air(out, lat, lon)
+    } catch {
+    }
 }
 
 // ── PLAN-001：城市搜索（Open-Meteo Geocoding）──
@@ -854,7 +1135,7 @@ fn impl_report(city str, ut str, uw str) ReportOut {
         var o ReportOut = ReportOut {
             ok: false,
             error: "unknown city: " + city,
-            source: "open-meteo",
+            source: "Open-Meteo",
             condition: "partly",
             cond_zh: "多云",
             icon: "⛅",
@@ -890,7 +1171,7 @@ fn impl_report_ll(lat str, lon str, ut str, uw str) ReportOut {
     var out ReportOut = ReportOut {
         ok: false,
         error: "unknown error",
-        source: "open-meteo",
+        source: "Open-Meteo",
         condition: "partly",
         cond_zh: "多云",
         icon: "⛅",
@@ -1131,6 +1412,9 @@ fn impl_report_ll(lat str, lon str, ut str, uw str) ReportOut {
         out.o3 = "—"
         aqi_i = 0
     }
+
+    // ── PLAN-005 QWeather 覆盖层（有 key 时逐段覆盖，失败保 OM 基线）──
+    qw_overlay(out, lat, lon, ut, uw)
 
     // ── PLAN-002 生活指数（本地推导，零额外外呼；规则锚定 PLAN-002 §5.3）──
     out.indices.push(LifeIndex { name: "穿衣", level: index_dressing(feels_f), note: "体感 " + out.feels })

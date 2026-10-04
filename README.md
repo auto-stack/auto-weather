@@ -38,10 +38,11 @@ auto run -r vm
 - **设置中心**（PLAN-006）：齿轮开合设置卡——温度单位 °C/°F、风速单位
   km/h/m/s（即时生效并持久化）、默认城市轮选（启动生效）、城市管理
   ↑↓ 排序与删除。设置存于 `local_data_dir/settings.json`。
-- **QWeather**：自定义 API Host 已实证只认新平台 JWT
-  （`Authorization: Bearer <JWT>`），Key ID 本身不是 token；纯 `.at` 侧
-  暂无 Ed25519/ES256 签名原语，待 auto-lang crypto 面或外部 token 服务
-  落地后作为第二 provider 接入（私钥经 env 注入，严禁入库）。
+- **QWeather**：双 provider 之一（PLAN-005）。设 `QWEATHER_KEY` env 时实况/
+  24h/7 日/空气优先走 QWeather（`?key=` 查询参数认证——Bearer 头 401 实测），
+  任一段失败自动保留 Open-Meteo 基线；不设 key 则纯 Open-Meteo。预警与
+  分钟级降水待账号开通对应 API 套餐后接入（端点 404 实测，alert 契约
+  已就位）。key 严禁入库——本机开发凭据存 `~/.qweather/`（600）。
 
 ## 验证
 

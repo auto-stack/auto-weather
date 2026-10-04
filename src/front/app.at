@@ -927,8 +927,8 @@ widget App {
                 .updated_at = r.updated_at
                 .hourly = r.hourly
                 .daily = r.daily
-                .data_note = "实时数据 · Open-Meteo"
-                .source_label = "Open-Meteo"
+                .data_note = "实时数据 · " + r.source
+                .source_label = r.source
                 .pm25 = r.pm25
                 .pm10 = r.pm10
                 .o3 = r.o3
@@ -1064,8 +1064,8 @@ widget App {
                     .updated_at = r.updated_at
                     .hourly = r.hourly
                     .daily = r.daily
-                    .data_note = "实时数据 · Open-Meteo"
-                    .source_label = "Open-Meteo"
+                    .data_note = "实时数据 · " + r.source
+                    .source_label = r.source
                     .pm25 = r.pm25
                     .pm10 = r.pm10
                     .o3 = r.o3
@@ -1359,8 +1359,8 @@ widget App {
                 .updated_at = r.updated_at
                 .hourly = r.hourly
                 .daily = r.daily
-                .data_note = "实时数据 · Open-Meteo"
-                .source_label = "Open-Meteo"
+                .data_note = "实时数据 · " + r.source
+                .source_label = r.source
                 .pm25 = r.pm25
                 .pm10 = r.pm10
                 .o3 = r.o3
@@ -1411,8 +1411,8 @@ widget App {
                         .updated_at = rc2.updated_at
                         .hourly = rc2.hourly
                         .daily = rc2.daily
-                        .data_note = "实时数据 · Open-Meteo"
-                        .source_label = "Open-Meteo"
+                        .data_note = "实时数据 · " + rc2.source
+                        .source_label = rc2.source
                         .pm25 = rc2.pm25
                         .pm10 = rc2.pm10
                         .o3 = rc2.o3
@@ -1442,8 +1442,8 @@ widget App {
                     .updated_at = r.updated_at
                     .hourly = r.hourly
                     .daily = r.daily
-                    .data_note = "实时数据 · Open-Meteo"
-                    .source_label = "Open-Meteo"
+                    .data_note = "实时数据 · " + r.source
+                    .source_label = r.source
                     .pm25 = r.pm25
                     .pm10 = r.pm10
                     .o3 = r.o3
