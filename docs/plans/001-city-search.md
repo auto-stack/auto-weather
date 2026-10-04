@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-001
-status: execution_done
+status: reviewed
 feature_name: 城市搜索与多城市管理
 author: [agent]
 created_at: 2026-10-04T04:00:00Z
@@ -167,6 +167,25 @@ AutoLang `.at`（`#[api]`/widget/VM merged）、Open-Meteo Geocoding API、
   server 模式直探 cities_get/report_at 通过 | blockers: 无（--server=vm 下
   search 曾现 encode 原生件缺失，已改 UTF-8 透传并实证） | next: review`——
   所有任务与 AC 映射已核销，变更已提交，worktree 保留待复审。
+- `stage: review | PLAN-001 | rev 1 | outcome: pass |
+  reviewed_commit: f7eb776a376dd0ee3f58b8dfd4959f831dcbd53e |
+  base_commit: 327bcc70e5fd42cbb72afd3c55a1345c1f3d3171 |
+  dependency_revisions: auto-lang 168b56923（仅验证工具链 auto.exe，无源码改动）|
+  spec_inputs: docs/specs/weather-app.md（worktree 含 SD-01）、README.md
+  （worktree 含 SD-02）——增量已核：文本描述当前行为、持久决策，未发布（待 merge）|
+  acceptance_results: AC-01 pass（T7 search_names 非空+快照含青岛；2dp 子项由
+  fmt_latlon 源码+T-03 直探 36.07/120.38+add payload id 36.07_120.38 三角实证）/
+  AC-02 pass（复审复现：pre-state custom_names["青岛"] 跨进程重启）/
+  AC-03 pass（T7 SelectCustom：city_zh=青岛+source_label=Open-Meteo）/
+  AC-04 pass（复审复现 worktree vm_smoke 21/21 exit 0）/
+  AC-05 pass（SD-01/02 文件核查在案）|
+  findings: F-001 info——计划 §5.2 文案"名称 · 副标题"与实现（label 仅 name）
+  有漂移，非 AC 约束，建议 PLAN-002 渲染副标题；F-002 info——SelectCustom
+  不置 .city_id，内置 pill 高亮与显示城市可能短暂不一致（纯视觉），建议
+  PLAN-004 一并处理。均无阻塞 |
+  evidence: 复审复现 /tmp/review-smoke1.out（21/21，pre-state 持久化）；
+  worktree 零脏文件（status 0 行）；worktree 定位 git worktree list 实证 |
+  next: merge`。复审局限声明：复审与实施同会话，结论全部经工件与复现命令重建。
 
 ## 10. 待澄清事项
 
