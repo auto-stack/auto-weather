@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-006
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: 设置中心（单位/主题/默认城市/城市管理排序）
 author: [agent]
 created_at: 2026-10-04T13:00:00Z
@@ -189,6 +190,17 @@ AutoLang .at、`#[api]`/VM merged、local_data_dir JSON、vm_smoke MCP。
   副本，PLAN-004 的"竖屏对齐"语义不受影响（共享区本就双端可见）。
   A6 偶发环境故障一记：w6-smoke4 运行中 app 进程无 panic 退出
   （前后文无异常日志），重跑即绿——登记为环境/工具链偶发，非代码缺陷。
+- `stage: merge | PLAN-006:r1 | outcome: pass`——归并收据：`prepared`
+  基线 r1/pass @ ecdbbcc；冻结增量 SD-01/02；交付提交 ecdbbcc；口径沿用
+  PLAN-001 裁定（v0.6-dev 交付线 / 无台账 N/A / README 约定）；编号 006
+  对齐 roadmap（005 预留 QWeather），偏离 max+1 已在 new 阶段记录。
+  `landed`：rebase 后 `--ff-only`——v0.6-dev tip =
+  31a3b8a96dd400fa05af0aa2ba63ea4bc7695184 = 交付提交（改写映射
+  ecdbbcc→31a3b8a；range-diff `=` 等价）；主检出集成冒烟 40/40
+  （/tmp/merge6-smoke.out）。`ledger_refreshed`: N/A。`archived`:
+  docs/plans/archived/006-settings-center.md，delivered。`cleaned`:
+  wt-guard.sh 缺失（人工等价核查）；移除前预杀 worktree 派生 node/
+  esbuild；worktree 与 plan-006-dev 已移除，组目录已删。
 
 ## 10. 待澄清事项
 
