@@ -72,12 +72,25 @@ pub type ReportOut = {
     hourly: []HourPoint
     daily: []DayPoint
     indices: []LifeIndex
+    precip: []PrecipPoint
+    // PLAN-003 预警展示位：空串 = 无预警（内容待 PLAN-005 QWeather）
+    alert_level: str
+    alert_title: str
+    alert_text: str
 }
 
 pub type LifeIndex = {
     name: str
     level: str
     note: str
+}
+
+// PLAN-003：24h 降水点（bar = 后端拼好的 Tailwind class，前端 style 绑定）
+pub type PrecipPoint = {
+    time: str
+    prob: str
+    amount: str
+    bar: str
 }
 
 // PLAN-001：搜索/城市列表契约——平行 str 数组（前端索引循环物化）
@@ -207,6 +220,31 @@ fn scan_numlist(raw str, key str) []str {
     return out
 }
 
+// PLAN-003：原始段变体（不做 2dp 截断；调用方自判 "null" 哨兵）
+fn scan_raw_segments(raw str, key str) []str {
+    var out []str = []
+    var rest str = raw
+    while rest.find(key) >= 0 {
+        let pos int = rest.find(key)
+        let tail str = rest.sub(pos + key.len(), rest.len())
+        let end int = tail.find(",")
+        if end < 0 {
+            rest = ""
+        } else {
+            out.push(tail.sub(0, end))
+            rest = tail.sub(end, tail.len())
+        }
+    }
+    return out
+}
+
+// 降水概率段 → int（"null" → -1 哨兵；负值前端显示 "—"）
+fn prob_seg_to_i(seg str) int {
+    if seg == "null" { return -1 }
+    let v int = (str.to_uint(seg)) as int
+    return v
+}
+
 // 原始十进制串 → 2dp 文本（纯字符串运算；loop-var 数字字段的 float 面
 // 会装箱中毒——saturation 实证，见 PLAN-002 记录）
 fn latlon_2dp(raw str) str {
@@ -293,6 +331,35 @@ fn index_cold(tmax float, tmin float) str {
     let swing float = tmax - tmin
     if swing >= 10.0 { return "较易发" }
     return "少发"
+}
+
+// PLAN-003：降水 bar class 拼装（高 6 档按量、色 5 档按概率）
+fn precip_bar(prob int, amt float) str {
+    var h str = "h-1"
+    if amt >= 8.0 {
+        h = "h-6"
+    } else if amt >= 3.0 {
+        h = "h-5"
+    } else if amt >= 1.0 {
+        h = "h-4"
+    } else if amt >= 0.3 {
+        h = "h-3"
+    } else if amt >= 0.05 {
+        h = "h-2"
+    }
+    var c str = "bg-muted/40"
+    if prob < 0 {
+        c = "bg-muted/40"
+    } else if prob < 30 {
+        c = "bg-sky-300/70"
+    } else if prob < 60 {
+        c = "bg-sky-400"
+    } else if prob < 85 {
+        c = "bg-sky-500"
+    } else {
+        c = "bg-sky-600"
+    }
+    return "w-4 rounded-t shrink-0 " + c + " " + h
 }
 
 // Sakamoto 星期（0=周日），日期串 "YYYY-MM-DD"
@@ -603,7 +670,11 @@ fn impl_report(city str) ReportOut {
             updated_at: "--:--",
             hourly: [],
             daily: [],
-            indices: []
+            indices: [],
+            precip: [],
+            alert_level: "",
+            alert_title: "",
+            alert_text: ""
         }
         return o
     }
@@ -635,7 +706,11 @@ fn impl_report_ll(lat str, lon str) ReportOut {
         updated_at: "--:--",
         hourly: [],
         daily: [],
-        indices: []
+        indices: [],
+        precip: [],
+        alert_level: "",
+        alert_title: "",
+        alert_text: ""
     }
     // PLAN-002：指数推导用原始值——块级 let 不跨 try 块，函数级 var 提升
     var temp_f float = 0.0
@@ -645,7 +720,7 @@ fn impl_report_ll(lat str, lon str) ReportOut {
     var rain12h bool = false
     var tmax0 float = 0.0
     var tmin0 float = 0.0
-    let url str = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,uv_index,visibility&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&wind_speed_unit=kmh&timezone=auto"
+    let url str = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,uv_index,visibility&hourly=temperature_2m,weather_code,precipitation,precipitation_probability&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&wind_speed_unit=kmh&timezone=auto"
     try {
         let raw str = get_text(url)
         if raw == "" {
@@ -705,6 +780,20 @@ fn impl_report_ll(lat str, lon str) ReportOut {
                 let cf float = c
                 hcodes.push((cf as int))
             }
+            // PLAN-003：降水两通道——概率 raw 扫描（null 安全），量 for-in
+            // 元素面 + raw 段显示面（float→str 面缺失，显示走字符串）
+            let pr_prob_segs []str = scan_raw_segments(raw, "\"precipitation_probability\":")
+            var pr_probs []int = []
+            var pi2 int = 0
+            for s in pr_prob_segs {
+                pr_probs.push(prob_seg_to_i(pr_prob_segs.get(pi2)))
+                pi2 = pi2 + 1
+            }
+            var pr_ams []float = []
+            for a in hv.precipitation {
+                pr_ams.push(a)
+            }
+            let pr_amsegs []str = scan_raw_segments(raw, "\"precipitation\":")
             let cur_hour str = ctime.sub(11, 13)
             var i int = 0
             var started bool = false
@@ -729,6 +818,29 @@ fn impl_report_ll(lat str, lon str) ReportOut {
                         icon: icon_for(hcodes.get(i)),
                         temp: temp_s(htemps.get(i)),
                         now: out.hourly.len() == 0
+                    })
+                    // PLAN-003：同窗降水点（索引对齐三通道）
+                    var pprob int = -1
+                    if i < pr_probs.len() {
+                        pprob = pr_probs.get(i)
+                    }
+                    var pamt float = 0.0
+                    if i < pr_ams.len() {
+                        pamt = pr_ams.get(i)
+                    }
+                    var pseg str = "0"
+                    if i < pr_amsegs.len() {
+                        pseg = pr_amsegs.get(i)
+                    }
+                    var pprob_s str = "—"
+                    if pprob >= 0 {
+                        pprob_s = pprob.str() + "%"
+                    }
+                    out.precip.push(PrecipPoint {
+                        time: label,
+                        prob: pprob_s,
+                        amount: pseg + "mm",
+                        bar: precip_bar(pprob, pamt)
                     })
                 }
                 i = i + 1

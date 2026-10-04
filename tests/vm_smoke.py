@@ -614,6 +614,45 @@ def main() -> int:
             print(f"  FAIL: T8 {e}")
             failed += 1
 
+        print("\n=== T9 precipitation bars & alert placeholder (PLAN-003) ===")
+        try:
+            snap9 = mcp.snapshot()
+            ok_hdr = "24小时降水" in snap9
+            results.append(("precip section rendered", ok_hdr))
+            print(f"  {'PASS' if ok_hdr else 'FAIL'}: 24小时降水 visible")
+            if not ok_hdr:
+                failed += 1
+
+            st_p = mcp.state("precip")
+            n_p = st_p.count("<vmref>")
+            ok_n = n_p == 24
+            results.append((f"precip has 24 points ({n_p})", ok_n))
+            print(f"  {'PASS' if ok_n else 'FAIL'}: precip count = {n_p}")
+            if not ok_n:
+                failed += 1
+
+            ok_mm = "mm" in snap9
+            results.append(("amount labels (mm) rendered", ok_mm))
+            print(f"  {'PASS' if ok_mm else 'FAIL'}: mm labels")
+            if not ok_mm:
+                failed += 1
+
+            st_a = mcp.state("alert_title")
+            ok_a = '""' in st_a
+            results.append(("alert_title empty (banner hidden)", ok_a))
+            print(f"  {'PASS' if ok_a else 'FAIL'}: alert placeholder inert")
+            if not ok_a:
+                failed += 1
+            ok_no_banner = "天气预警" not in snap9
+            results.append(("no alert banner in snapshot", ok_no_banner))
+            print(f"  {'PASS' if ok_no_banner else 'FAIL'}: banner absent")
+            if not ok_no_banner:
+                failed += 1
+        except Exception as e:
+            results.append(("T9 precip/alerts", False))
+            print(f"  FAIL: T9 {e}")
+            failed += 1
+
     finally:
         proc.terminate()
         try:

@@ -118,6 +118,11 @@ widget App {
         var pm10 str = "—"
         var o3 str = "—"
         var indices = []
+        // PLAN-003：24h 降水 + 预警展示位（空串=无预警）
+        var precip = []
+        var alert_level str = ""
+        var alert_title str = ""
+        var alert_text str = ""
         var refreshing bool = false
         var hourly = [
             { time: "现在", icon: "⛅", temp: "23°", now: true },
@@ -145,6 +150,16 @@ widget App {
                 style: "w-full p-3 gap-3 items-center"
                 col {
                     style: app_frame
+
+                // PLAN-003：天气预警 banner（alert_title 空串 = 不渲染；
+                // 内容待 PLAN-005 QWeather 接入）
+                if .alert_title != "" {
+                    row {
+                        style: "w-full items-center gap-2 px-3 py-2 rounded-2xl bg-amber-500/15 border border-amber-500/40"
+                        text .alert_level { style: "text-xs font-bold text-amber-600 shrink-0" }
+                        text .alert_title { style: "text-xs font-medium text-foreground" }
+                    }
+                }
 
                 // ── Header ──
                 row {
@@ -486,6 +501,27 @@ widget App {
                                         }
                                     }
                                 }
+                                // PLAN-003：24小时降水（bar class 后端预拼）
+                                col {
+                                    style: "w-full gap-2"
+                                    text "24小时降水" { style: section_title }
+                                    scroll (axis: "x", style: "w-full h-28") {
+                                        row {
+                                            style: "items-end gap-1.5 h-24"
+                                            for p in .precip {
+                                                col {
+                                                    style: "w-10 shrink-0 items-center gap-0.5"
+                                                    text p.prob { style: "text-[9px] text-muted-foreground" }
+                                                    col {
+                                                        style: p.bar
+                                                    }
+                                                    text p.time { style: "text-[9px] text-muted-foreground" }
+                                                    text p.amount { style: "text-[8px] text-muted-foreground/70" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -744,6 +780,10 @@ widget App {
                 .pm10 = r.pm10
                 .o3 = r.o3
                 .indices = r.indices
+                .precip = r.precip
+                .alert_level = r.alert_level
+                .alert_title = r.alert_title
+                .alert_text = r.alert_text
             }
             // PLAN-001：预填自定义城市（后端持久化；失败静默）
             let rc = cities_get()
@@ -875,6 +915,10 @@ widget App {
                     .pm10 = r.pm10
                     .o3 = r.o3
                     .indices = r.indices
+                    .precip = r.precip
+                    .alert_level = r.alert_level
+                    .alert_title = r.alert_title
+                    .alert_text = r.alert_text
                 }
             }
         }
@@ -1104,6 +1148,10 @@ widget App {
                 .pm10 = r.pm10
                 .o3 = r.o3
                 .indices = r.indices
+                .precip = r.precip
+                .alert_level = r.alert_level
+                .alert_title = r.alert_title
+                .alert_text = r.alert_text
             }
         }
 
@@ -1133,6 +1181,10 @@ widget App {
                 .pm10 = r.pm10
                 .o3 = r.o3
                 .indices = r.indices
+                .precip = r.precip
+                .alert_level = r.alert_level
+                .alert_title = r.alert_title
+                .alert_text = r.alert_text
             }
             .refreshing = false
         }

@@ -29,6 +29,9 @@ auto run -r vm
 - **生活指数与空气详情**（PLAN-002）："生活指数"区展示穿衣/洗车/运动/感冒/
   紫外线（本地推导）；当前详情含 PM2.5/PM10/O3 组分；自定义城市 pill 带
   ✕ 可删除。
+- **降水与预警**（PLAN-003）："24小时降水"条形区（逐小时概率%/量mm，条高按
+  量分档、颜色按概率分档）；"天气预警"banner 为条件渲染展示位（有预警内容
+  时显示，接入待 QWeather）。
 - **QWeather**：自定义 API Host 已实证只认新平台 JWT
   （`Authorization: Bearer <JWT>`），Key ID 本身不是 token；纯 `.at` 侧
   暂无 Ed25519/ES256 签名原语，待 auto-lang crypto 面或外部 token 服务
