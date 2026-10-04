@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-002
-status: executing
+status: execution_done
 feature_name: 生活指数、空气详情与城市管理（删除）
 author: [agent]
 created_at: 2026-10-04T06:30:00Z
-updated_at: 2026-10-04T06:30:00Z
+updated_at: 2026-10-04T08:10:00Z
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 6
 supersedes_spec_components: []
 new_spec_components: [docs/specs/weather-app.md#F-P0-03, docs/specs/weather-app.md#F-P0-04, docs/specs/weather-app.md#F-P1-05]
@@ -114,34 +114,52 @@ AutoLang .at（`#[api]`/widget/VM merged）、Open-Meteo Air Quality API
 
 ## 7. 验收标准
 
-| ID | 标准 | 验证 |
-|---|---|---|
-| AC-01 | report/report_at 返回 5 项指数，横屏渲染"穿衣"等 | T8 ①（快照+state） |
-| AC-02 | 在线时 pm25/pm10/o3 非"—"且 UI 渲染 | T8 ② |
-| AC-03 | cities_remove 生效并持久化；✕ 后 pill 消失 | T8 ④（state 断言） |
-| AC-04 | 搜索结果含"名称 · 副标题"（快照见"山东"） | T8 ③ |
-| AC-05 | vm_smoke 全绿（21 旧 + T8） | python tests/vm_smoke.py ×2 |
-| AC-06 | SD-01/02 落地 | 文件核查 |
+| ID | 标准 | 验证 | 结果 |
+|---|---|---|---|
+| AC-01 | report/report_at 返回 5 项指数，横屏渲染"穿衣"等 | T8 ①（快照含穿衣+indices 5×vmref） | **pass**（26/26） |
+| AC-02 | 在线时 pm25/pm10/o3 非"—"且 UI 渲染 | T8 ②（o3 36/pm10 22/pm25 21 实测） | **pass** |
+| AC-03 | cities_remove 生效并持久化；✕ 后 pill 消失 | T8 ④（删大连留青岛，末位 ✕ 定向） | **pass** |
+| AC-04 | 搜索结果含"名称 · 副标题"（快照见"山东"） | T8 ③ | **pass** |
+| AC-05 | vm_smoke 全绿（21 旧 + T8 新 5 项 = 26） | python tests/vm_smoke.py ×2 全绿 | **pass** |
+| AC-06 | SD-01/02 落地 | commit 8ee25b1 文件核查 | **pass** |
 
 ## 8. 执行步骤
 
-- [ ] T-01 后端：ReportOut 扩展 + AQI 组分 + 指数推导（AC-01/02）
-  - 验证：T8 ①② / merged smoke
-- [ ] T-02 后端：cities_remove（AC-03 前置）
+- [x] T-01 后端：ReportOut 扩展 + AQI 组分 + 指数推导（AC-01/02）
+  - 验证：T8 ①②；修复记录：块级 let 不跨 try（UndefinedVariable×5）→
+    推导用原始值提升函数级 var
+- [x] T-02 后端：cities_remove（AC-03 前置）
   - 验证：T8 ④
-- [ ] T-03 前端：PM 行 + 生活指数区 + 搜索副标题（AC-01/02/04）
-  - 验证：T8 ①②③
-- [ ] T-04 前端：pill ✕ + RemoveCustom（AC-03）
+- [x] T-03 前端：PM 行 + 生活指数区 + 搜索副标题（AC-01/02/04）
+  - 验证：T8 ①②③；调整：视图按钮 label 不支持 paren-expr → handler 预拼
+    `label` 字段（h.label）；按钮块父子污染 → find_smallest_clickable
+- [x] T-04 前端：pill ✕ + RemoveCustom（AC-03）
   - 验证：T8 ④
-- [ ] T-05 tests：T8 + 全量回归（AC-05）
-  - 验证：vm_smoke ×2 全绿
-- [ ] T-06 docs：SD-01/02（AC-06）
-  - 验证：文件核查
+- [x] T-05 tests：T8 + 全量回归（AC-05）
+  - 验证：vm_smoke 26/26 ×2（w2-smokeB/C）；T8 含横屏回切（T4 留竖屏）
+- [x] T-06 docs：SD-01/02（AC-06）
+  - 验证：commit 8ee25b1 文件核查
+
+依赖：T-01→T-03；T-02→T-04；T-05/06 最后。
 
 ## 9. 复审记录
 
 - `stage: new | PLAN-002 | rev 1 | outcome: pass | next: work`——授权内
   （"继续计划002"沿用 new+work 授权），任务覆盖 AC-01..06 与 SD-01/02。
+- `stage: work | PLAN-002 | rev 1 | outcome: pass | code_commit: 8ee25b1
+  (on plan-002-dev, base a147755) | task_ids: T-01..T-06 | evidence:
+  worktree vm_smoke 26/26 ×2（w2-smokeB/C 全绿）| blockers: 无 |
+  next: review`——所有任务与 AC 映射已核销，变更已提交，worktree 保留待复审。
+- **实施调整记录**（均在授权范围内，已随任务核销）：
+  A1 块级 let 不跨 try 块——推导原始值提升函数级 var（UndefinedVariable×5
+  实证）；A2 视图按钮 label 的 paren-expr 解析失败（20×RBrace 级联）——
+  改 handler 预拼 label 字段；A3 **for-in 循环变量数字字段读出面中毒**
+  （`as int` 饱和 21474836.47 / `""+` 垃圾 926338546 双实证；字符串字段
+  与同对象点访问正常）——search 坐标改走 raw 文本 key 扫描
+  （scan_numlist，纯字符串面）。该发现已写回 api.at 头注，属 design-v2
+  §6 配方清单第 8 条，后续 PLAN 直接遵守；A4 快照父子块污染——
+  find_smallest_clickable + 末位 ✕ 选择；A5 测试期 cities.json 污染
+  数据按运行时状态清理（非仓库数据）。
 
 ## 10. 待澄清事项
 
