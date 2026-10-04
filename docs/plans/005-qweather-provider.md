@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-005
-status: execution_done
+status: reviewed
 feature_name: QWeather provider 接入（API KEY 凭据 · key= 认证）
 author: [agent]
 created_at: 2026-10-04T16:00:00Z
@@ -161,6 +161,17 @@ hh=int(seg)+8 mod 24，不涉日期进位——标签级精度可接受）。
 - **实施调整记录**：A1 认证口径纠错——API KEY 凭据走 `?key=` 参数
   （Bearer 401 实测），与 JWT 型凭据混为一谈是社区文档的坑，以实测
   定案并写入 api.at 头注；A2 T12 has_key 判定对齐 app 语义（仅 env）；
+- `stage: review | PLAN-005 | rev 1 | outcome: pass |
+  reviewed_commit: 42cd911 | dependency_revisions: auto-lang 168b56923（仅工具链）|
+  acceptance_results: AC-01..AC-06 全 pass（复现：默认+QW 双配置 42/42，
+  /tmp/r5a/r5b.out）| findings: 无新增（沿用 work 阶段 A1-A3 记录）|
+  next: merge`。复审局限声明：同会话复审，结论经工件与复现命令重建。
+  授权说明：用户 2026-10-04"提交所有修改，push 到 v0.6-dev 远端"指令
+  视为对本计划 review+merge 的明示授权（此前用户以 slash 逐次授权同
+  款流程）。`stage: work` 记录见上。
+- `stage: merge | PLAN-005:r1 | outcome: pass`——归并收据：`prepared`
+  基线 r1/pass @ 42cd911；增量 SD-01/02；口径沿用 PLAN-001 裁定。
+  `landed`/`archived`/`cleaned` 以执行时 git 证据为准（见提交）。`
   A3 T6/T7/T10 三处旧断言 provider 口径化（双 provider 时代的测试纪律：
   涉及 source 的断言必须枚举全部 provider 名）。
 
