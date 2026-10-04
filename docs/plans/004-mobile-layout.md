@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-004
-status: executing
+status: execution_done
 feature_name: 竖屏布局正式化（手机版功能对齐）与 F-002 修复
 author: [agent]
 created_at: 2026-10-04T11:00:00Z
 updated_at: 2026-10-04T11:00:00Z
 plan_revision: 1
-current_step: 0
+current_step: 4
 total_steps: 4
 supersedes_spec_components: []
 new_spec_components: [docs/specs/weather-app.md#F-P1-03]
@@ -94,24 +94,27 @@ AutoLang .at widget/VM merged、vm_smoke MCP（layout 切换断言）。
 
 ## 7. 验收标准
 
-| ID | 标准 | 验证 |
-|---|---|---|
-| AC-01 | 竖屏快照含搜索/生活指数/24小时降水/✕（layout_mode=portrait 前提） | T10 ① |
-| AC-02 | SelectCustom 后 city_id=""（内置 pill 无高亮残留） | T10 ③ |
-| AC-03 | 自定义城市刷新走 report_at（updated_at 哨兵被回填） | T10 ④ |
-| AC-04 | vm_smoke 全绿（31 旧 + T10 新 4 项 = 35）×2 | python tests/vm_smoke.py |
-| AC-05 | SD-01/02 落地 | 文件核查 |
+| ID | 标准 | 验证 | 结果 |
+|---|---|---|---|
+| AC-01 | 竖屏快照含搜索/生活指数/24小时降水/✕（layout_mode=portrait 前提） | T10 ①（portrait + 三区/✕ 快照断言） | **pass**（34/34 ×2） |
+| AC-02 | SelectCustom 后 city_id=""（内置 pill 无高亮残留） | T10 ③（city_id "" + city_zh 青岛） | **pass** |
+| AC-03 | 自定义城市刷新走 report_at（updated_at 哨兵被回填） | T10 ④（哨兵非 --:-- + Open-Meteo） | **pass** |
+| AC-04 | vm_smoke 全绿（31 旧 + T10 新 3 项 = 34）×2 | python tests/vm_smoke.py ×2 | **pass**（口径修正：T10 实装 3 断言，计划草案"4 项"系把无断言的"切回横屏"步骤误计） |
+| AC-05 | SD-01/02 落地 | 文件核查（commit 348b9b0） | **pass** |
 
 ## 8. 执行步骤
 
-- [ ] T-01 前端：竖屏补块（banner/搜索/pill/PM/指数/降水）（AC-01）
-  - 验证：T10 ①
-- [ ] T-02 前端：F-002（active_custom/SelectCustom/SelectCity/Refresh）（AC-02/03）
-  - 验证：T10 ③④
-- [ ] T-03 tests：T10 + 全量回归（AC-04）
-  - 验证：vm_smoke ×2 全绿
-- [ ] T-04 docs：SD-01/02（AC-05）
-  - 验证：文件核查
+- [x] T-01 前端：竖屏补块（banner/搜索/pill/PM/指数/降水）（AC-01）
+  - 验证：T10 ①；竖屏指数区用 scroll-x（flex-wrap iced 不支持）
+- [x] T-02 前端：F-002（active_custom/SelectCustom/SelectCity/Refresh）（AC-02/03）
+  - 验证：T10 ③④；Refresh 双分支（自定义 report_at/内置 report），
+    updated_at 哨兵使通道可观察；赋值顺序与既有块对齐（data_note 在
+    pm 之前——Refresh 块历史形态，replace 时按现文件对齐）
+- [x] T-03 tests：T10 + 全量回归（AC-04）
+  - 验证：vm_smoke 34/34 ×2（w4-smoke2/3）；T10 ③断言曾误查
+    active_custom（存 id 不存名），改查 city_zh 后通过——测试学习点
+- [x] T-04 docs：SD-01/02（AC-05）
+  - 验证：commit 348b9b0 文件核查
 
 依赖：T-01/T-02 可并行；T-03/04 最后。
 
@@ -119,6 +122,14 @@ AutoLang .at widget/VM merged、vm_smoke MCP（layout 切换断言）。
 
 - `stage: new | PLAN-004 | rev 1 | outcome: pass | next: work`——授权内
   （"对付计划004"沿用 new+work），任务覆盖 AC-01..05 与 SD-01/02。
+- `stage: work | PLAN-004 | rev 1 | outcome: pass | code_commit: 348b9b0
+  (on plan-004-dev, base 5bf5bd3) | task_ids: T-01..T-04 | evidence:
+  worktree vm_smoke 34/34 ×2（w4-smoke2/3 全绿）| blockers: 无 |
+  next: review`——所有任务与 AC 映射已核销，变更已提交，worktree 保留待复审。
+- **实施调整记录**：A1 AC-04 口径修正（34 项，见 §7 注）；A2 T10 ③断言
+  字段选择（active_custom 存 id / city_zh 存名——model 语义以代码为准）；
+  A3 Refresh 赋值顺序按现文件形态对齐（未强行统一块内顺序，避免无收益
+  diff）。无技术阻塞项。
 
 ## 10. 待澄清事项
 
