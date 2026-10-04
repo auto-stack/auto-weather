@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-005
-status: executing
+status: execution_done
 feature_name: QWeather provider 接入（API KEY 凭据 · key= 认证）
 author: [agent]
 created_at: 2026-10-04T16:00:00Z
 updated_at: 2026-10-04T16:00:00Z
 plan_revision: 1
-current_step: 0
+current_step: 5
 total_steps: 5
 supersedes_spec_components: []
 new_spec_components: [docs/specs/weather-app.md#F-P2-01]
@@ -122,35 +122,47 @@ hh=int(seg)+8 mod 24，不涉日期进位——标签级精度可接受）。
 
 ## 7. 验收标准
 
-| ID | 标准 | 验证 |
-|---|---|---|
-| AC-01 | 有 key 时 current 走 QW（source_label=="QWeather"，字段非空） | T12（QW 配置轮） |
-| AC-02 | hourly/daily 被 QW 覆盖（24 点/5 日计数不变，值来自 QW） | T12 + T9 计数回归 |
-| AC-03 | 空气字段来自 QW（aqi 中文等级 + pm/o3 值） | T12（state aqi_level 中文） |
-| AC-04 | 无 key 行为与今日一致（全量回落 OM） | T12（默认轮）+ 全回归 |
-| AC-05 | 双配置 vm_smoke 全绿（默认 ×2 + QW ×1，40 项/轮） | python tests/vm_smoke.py |
-| AC-06 | SD-01/02 落地 + api.at 头注 QWeather 路线更新 | 文件核查 |
+| ID | 标准 | 验证 | 结果 |
+|---|---|---|---|
+| AC-01 | 有 key 时 current 走 QW（source_label=="QWeather"，字段非空） | T12 QW 轮（"QWeather active" PASS） | **pass**（42/42 ×2 默认 + ×1 QW） |
+| AC-02 | hourly/daily 被 QW 覆盖（24 点/5 日计数不变，值来自 QW） | T12 + T9 计数回归（QW 轮全绿） | **pass** |
+| AC-03 | 空气字段来自 QW（aqi 中文等级 + pm/o3 值） | T12（aqi level 中文可读 PASS） | **pass** |
+| AC-04 | 无 key 行为与今日一致（全量回落 OM） | T12 默认轮（"open-meteo fallback" PASS）+ 全回归 | **pass** |
+| AC-05 | 双配置 vm_smoke 全绿（默认 ×2 + QW ×1，40 项/轮实得 42） | w5-smoke2/5（默认）+ w5-smoke4（QW） | **pass**（口径注：T12 实装 2 断言，总项 42） |
+| AC-06 | SD-01/02 落地 + api.at 头注 QWeather 路线更新 | commit 42cd911 文件核查 | **pass** |
 
 ## 8. 执行步骤
 
-- [ ] T-01 后端：qw 配置 + qw_current + source/qcondition + overlay 骨架（AC-01）
+- [x] T-01 后端：qw 配置 + qw_current + source/qcondition + overlay 骨架（AC-01）
   - 验证：T12 QW 轮
-- [ ] T-02 后端：qw_hourly/daily/air 三段（AC-02/03）
-  - 验证：T12 QW 轮 + T9 回归
-- [ ] T-03 前端：data_note/source_label 四处 r.source 化（AC-01 展示）
-  - 验证：T12 断言
-- [ ] T-04 tests：T12 条件式 + 双配置回归（AC-04/05）
-  - 验证：默认 ×2 + QW ×1
-- [ ] T-05 docs：SD-01/02 + 头注/README（AC-06）
-  - 验证：文件核查
+- [x] T-02 后端：qw_hourly/daily/air 三段（AC-02/03）
+  - 验证：T12 QW 轮 + T9 回归；UTC→+8 三助手（mh_plus8/hh_label8/
+    weekday8 + Sakamoto 抽为 weekday_calc 复用）
+- [x] T-03 前端：data_note/source_label 五赋值块 r.source 化（AC-01 展示）
+  - 验证：T12 断言；source 字面量 "Open-Meteo"/"QWeather" 展示体面化
+- [x] T-04 tests：T12 条件式 + 双配置回归（AC-04/05）
+  - 验证：默认 ×2 + QW ×1 全绿 42/42（w5-smoke2/5 默认，w5-smoke4 QW）；
+    调整：T12 has_key 与 app 语义对齐（仅 env 触发，不以本机文件推断）；
+    T6/T7/T10 三处断言双 provider 口径化
+- [x] T-05 docs：SD-01/02 + 头注/README（AC-06）
+  - 验证：commit 42cd911 文件核查
 
 依赖：T-01→T-02→T-03；T-04/05 最后。
 
 ## 9. 复审记录
 
 - `stage: new | PLAN-005 | rev 1 | outcome: pass | next: work`——授权内
-  （"继续计划005"沿用 new+work）；阻塞解除路径（API KEY 凭据 + key=
-  参数）已实测并记录。
+  （"继续计划005"沿用 new+work）；编号 005 即 roadmap 预留位。
+- `stage: work | PLAN-005 | rev 1 | outcome: pass | code_commit: 42cd911
+  (on plan-005-dev, base 5db783a) | task_ids: T-01..T-05 | evidence:
+  双配置 vm_smoke 42/42 全绿（默认 w5-smoke2/5 + QW w5-smoke4）|
+  blockers: 无 | next: review`——所有任务与 AC 映射已核销，变更已提交，
+  worktree 保留待复审。
+- **实施调整记录**：A1 认证口径纠错——API KEY 凭据走 `?key=` 参数
+  （Bearer 401 实测），与 JWT 型凭据混为一谈是社区文档的坑，以实测
+  定案并写入 api.at 头注；A2 T12 has_key 判定对齐 app 语义（仅 env）；
+  A3 T6/T7/T10 三处旧断言 provider 口径化（双 provider 时代的测试纪律：
+  涉及 source 的断言必须枚举全部 provider 名）。
 
 ## 10. 待澄清事项
 
