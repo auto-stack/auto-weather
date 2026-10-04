@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-004
-status: execution_done
+status: reviewed
 feature_name: 竖屏布局正式化（手机版功能对齐）与 F-002 修复
 author: [agent]
 created_at: 2026-10-04T11:00:00Z
@@ -130,6 +130,24 @@ AutoLang .at widget/VM merged、vm_smoke MCP（layout 切换断言）。
   字段选择（active_custom 存 id / city_zh 存名——model 语义以代码为准）；
   A3 Refresh 赋值顺序按现文件形态对齐（未强行统一块内顺序，避免无收益
   diff）。无技术阻塞项。
+- `stage: review | PLAN-004 | rev 1 | outcome: pass |
+  reviewed_commit: 348b9b07341839e97e8440c4b8f255ba49eebb06 |
+  base_commit: 5bf5bd3（docs(plan): PLAN-004 contract）|
+  dependency_revisions: auto-lang 168b56923（仅验证工具链）|
+  spec_inputs: docs/specs/weather-app.md（worktree 含 SD-01）、README.md
+  （worktree 含 SD-02）——增量已核：描述当前行为与持久决策，未发布 |
+  acceptance_results: AC-01 pass（T10 ① portrait+三区/✕）/ AC-02 pass
+  （T10 ③ city_id "" + city_zh 青岛）/ AC-03 pass（T10 ④ 哨兵回填 +
+  Open-Meteo）/ AC-04 pass（复审复现 34/34 exit 0）/ AC-05 pass
+  （SD-01/02 文件核查，commit 348b9b0）|
+  findings: F-001 info——竖屏区块与横屏同构复制（~280 行），DSL 无
+  组件抽取机制，若后续引入 widget include 可收敛；F-002 info——竖屏
+  scroll-y 固定 max-h-[520px]，内容变高后依赖滚动（行为正确）；
+  F-003 info——active_custom 存 id 不存名（model 语义），已在计划
+  §9 A2 记录。均无阻塞 |
+  evidence: 复审复现 /tmp/review4-smoke.out（34/34）；worktree 零脏文件 |
+  next: merge`。复审局限声明：复审与实施同会话，结论全部经工件与
+  复现命令重建。
 
 ## 10. 待澄清事项
 
