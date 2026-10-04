@@ -182,6 +182,11 @@ def find_input(snapshot: str) -> str | None:
 
 
 def main() -> int:
+    # GBK 控制台打印含 ✓/emoji 的日志尾部会炸——统一容错编码
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
     if not Path(AUTO_BIN).exists():
         print(f"ERROR: auto binary not found: {AUTO_BIN}")
         return 2

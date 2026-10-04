@@ -47,6 +47,7 @@ pub type DayPoint = {
 }
 
 // 全扁平标量 + 两个列表（前端 handler 单跳读契约）
+// PLAN-002：pm25/pm10/o3（AQI 组分，软失败 "—"）+ indices（生活指数）
 pub type ReportOut = {
     ok: bool
     error: str
@@ -64,9 +65,19 @@ pub type ReportOut = {
     uv: str
     aqi: str
     aqi_level: str
+    pm25: str
+    pm10: str
+    o3: str
     updated_at: str
     hourly: []HourPoint
     daily: []DayPoint
+    indices: []LifeIndex
+}
+
+pub type LifeIndex = {
+    name: str
+    level: str
+    note: str
 }
 
 // PLAN-001：搜索/城市列表契约——平行 str 数组（前端索引循环物化）
@@ -213,6 +224,44 @@ fn aqi_level(a int) str {
 fn wind_dir_zh(deg int) str {
     var dirs = ["北", "东北", "东", "东南", "南", "西南", "西", "西北"]
     return dirs[((deg + 23) / 45) % 8]
+}
+
+// ── PLAN-002 生活指数推导（纯标量，零额外外呼；规则锚定计划 §5.3 表）──
+fn is_rain_code(code int) bool {
+    if code >= 51 && code <= 67 { return true }
+    if code >= 80 && code <= 82 { return true }
+    if code >= 95 { return true }
+    return false
+}
+
+fn index_dressing(feels float) str {
+    if feels < 0.0 { return "羽绒服" }
+    if feels < 10.0 { return "厚外套" }
+    if feels < 18.0 { return "薄外套" }
+    if feels < 24.0 { return "长袖衬衫" }
+    if feels < 30.0 { return "短袖" }
+    return "清凉夏装"
+}
+
+fn index_carwash(rain12h bool, precip float) str {
+    if rain12h { return "不宜" }
+    if precip > 0.0 { return "不宜" }
+    return "适宜"
+}
+
+fn index_sport(t float, aqi int, precip float) str {
+    if precip > 0.0 { return "不宜" }
+    if t < 5.0 || t > 32.0 { return "不宜" }
+    if aqi > 150 { return "不宜" }
+    if t >= 10.0 && t <= 28.0 && aqi <= 100 { return "适宜" }
+    return "较适宜"
+}
+
+fn index_cold(tmax float, tmin float) str {
+    if tmin <= 5.0 { return "较易发" }
+    let swing float = tmax - tmin
+    if swing >= 10.0 { return "较易发" }
+    return "少发"
 }
 
 // Sakamoto 星期（0=周日），日期串 "YYYY-MM-DD"
@@ -399,6 +448,58 @@ fn impl_cities_add(id str, name str, lat str, lon str) CityListOut {
     return out
 }
 
+// 读旧表 → 过滤 id → 重写 → 返回新表（PLAN-002 T-02）
+fn impl_cities_remove(id str) CityListOut {
+    var out CityListOut = CityListOut {
+        ok: false,
+        error: "",
+        ids: [],
+        names: [],
+        lats: [],
+        lons: []
+    }
+    let path str = cities_path()
+    if !file.exists(path) {
+        out.ok = true
+        return out
+    }
+    let raw str = file.read_text(path)
+    if raw == "" {
+        out.ok = true
+        return out
+    }
+    let v = json.parse(raw)
+    if v != nil {
+        let cs = v.cities
+        if cs != nil {
+            for c in cs {
+                let cid str = "" + c.id
+                if cid != id {
+                    out.ids.push(cid)
+                    out.names.push("" + c.name)
+                    out.lats.push("" + c.lat)
+                    out.lons.push("" + c.lon)
+                }
+            }
+        }
+    }
+    var txt str = "{\"cities\":["
+    var i int = 0
+    while i < out.ids.len() {
+        if i != 0 { txt = txt + "," }
+        txt = txt + "{\"id\":" + quote_json(out.ids.get(i)) + ",\"name\":" + quote_json(out.names.get(i)) + ",\"lat\":" + quote_json(out.lats.get(i)) + ",\"lon\":" + quote_json(out.lons.get(i)) + "}"
+        i = i + 1
+    }
+    txt = txt + "]}"
+    let w int = file.write_text(path, txt)
+    if w != 0 {
+        out.error = "persist write failed"
+        return out
+    }
+    out.ok = true
+    return out
+}
+
 /// GET /api/weather/search?q= — 城市搜索（8 条，中文）
 #[api(method = "GET", path = "/api/weather/search")]
 pub fn weather_search(q str) SearchOut {
@@ -415,6 +516,12 @@ pub fn cities_get() CityListOut {
 #[api(method = "POST", path = "/api/weather/cities")]
 pub fn cities_add(id str, name str, lat str, lon str) CityListOut {
     return impl_cities_add(id, name, lat, lon)
+}
+
+/// DELETE /api/weather/cities?id= — 移除自定义城市（PLAN-002）
+#[api(method = "DELETE", path = "/api/weather/cities")]
+pub fn cities_remove(id str) CityListOut {
+    return impl_cities_remove(id)
 }
 
 /// GET /api/weather/report?city=<内置 city_id> — 全量天气报告
@@ -449,9 +556,13 @@ fn impl_report(city str) ReportOut {
             uv: "中等",
             aqi: "—",
             aqi_level: "—",
+            pm25: "—",
+            pm10: "—",
+            o3: "—",
             updated_at: "--:--",
             hourly: [],
-            daily: []
+            daily: [],
+            indices: []
         }
         return o
     }
@@ -477,10 +588,22 @@ fn impl_report_ll(lat str, lon str) ReportOut {
         uv: "中等",
         aqi: "—",
         aqi_level: "—",
+        pm25: "—",
+        pm10: "—",
+        o3: "—",
         updated_at: "--:--",
         hourly: [],
-        daily: []
+        daily: [],
+        indices: []
     }
+    // PLAN-002：指数推导用原始值——块级 let 不跨 try 块，函数级 var 提升
+    var temp_f float = 0.0
+    var feels_f float = 0.0
+    var uv_f float = 0.0
+    var precip_f float = 0.0
+    var rain12h bool = false
+    var tmax0 float = 0.0
+    var tmin0 float = 0.0
     let url str = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,cloud_cover,pressure_msl,wind_speed_10m,wind_direction_10m,uv_index,visibility&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=5&wind_speed_unit=kmh&timezone=auto"
     try {
         let raw str = get_text(url)
@@ -503,8 +626,13 @@ fn impl_report_ll(lat str, lon str) ReportOut {
         out.condition = condition_for((wc_f as int))
         out.cond_zh = cond_zh_for((wc_f as int))
         out.icon = icon_for((wc_f as int))
-        out.temp = temp_s(cur.temperature_2m)
-        out.feels = temp_s(cur.apparent_temperature)
+        // PLAN-002：保留原始 float 供指数推导（赋值到函数级 var）
+        temp_f = cur.temperature_2m
+        feels_f = cur.apparent_temperature
+        uv_f = cur.uv_index
+        precip_f = cur.precipitation
+        out.temp = temp_s(temp_f)
+        out.feels = temp_s(feels_f)
         out.humidity = fmt_i(cur.relative_humidity_2m) + "%"
         let spd int = f2i(cur.wind_speed_10m)
         let deg int = f2i(cur.wind_direction_10m)
@@ -514,7 +642,7 @@ fn impl_report_ll(lat str, lon str) ReportOut {
         let vis_m float = cur.visibility
         let vis_km float = vis_m / 1000.0
         out.visibility = fmt_i(vis_km) + " km"
-        out.uv = uv_level(cur.uv_index)
+        out.uv = uv_level(uv_f)
         let ctime str = "" + cur.time
         if ctime.len() >= 16 {
             out.updated_at = ctime.sub(11, 16)
@@ -552,6 +680,9 @@ fn impl_report_ll(lat str, lon str) ReportOut {
                 if out.hourly.len() < 24 {
                     var label str = "现在"
                     if out.hourly.len() != 0 { label = tt.sub(11, 16) }
+                    if out.hourly.len() < 12 {
+                        if is_rain_code(hcodes.get(i)) { rain12h = true }
+                    }
                     out.hourly.push(HourPoint {
                         time: label,
                         icon: icon_for(hcodes.get(i)),
@@ -587,6 +718,10 @@ fn impl_report_ll(lat str, lon str) ReportOut {
             while j < ddays.len() {
                 let ds str = ddays.get(j)
                 let dwc int = dcodes.get(j)
+                if j == 0 {
+                    tmax0 = dmaxs.get(j)
+                    tmin0 = dmins.get(j)
+                }
                 var label str = weekday_zh(ds)
                 if j == 0 { label = "今天" }
                 out.daily.push(DayPoint {
@@ -604,25 +739,43 @@ fn impl_report_ll(lat str, lon str) ReportOut {
         return out
     }
 
-    // ── AQI：独立软失败（air-quality API 挂不影响主报文）──
+    // ── AQI + 空气组分：独立软失败（air-quality API 挂不影响主报文）──
+    var aqi_i int = 0
     try {
-        let qa str = get_text("https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + lat + "&longitude=" + lon + "&current=us_aqi")
+        let qa str = get_text("https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + lat + "&longitude=" + lon + "&current=us_aqi,pm2_5,pm10,ozone")
         if qa != "" {
             let qv = json.parse(qa)
             if qv != nil {
                 let qc = qv.current
                 if qc != nil {
                     let qa_f float = qc.us_aqi
-                    let qa_i int = (qa_f as int)
-                    out.aqi = qa_i.str()
-                    out.aqi_level = aqi_level(qa_i)
+                    aqi_i = (qa_f as int)
+                    out.aqi = aqi_i.str()
+                    out.aqi_level = aqi_level(aqi_i)
+                    let pm25_f float = qc.pm2_5
+                    let pm10_f float = qc.pm10
+                    let o3_f float = qc.ozone
+                    out.pm25 = fmt_i(pm25_f)
+                    out.pm10 = fmt_i(pm10_f)
+                    out.o3 = fmt_i(o3_f)
                 }
             }
         }
     } catch {
         out.aqi = "—"
         out.aqi_level = "—"
+        out.pm25 = "—"
+        out.pm10 = "—"
+        out.o3 = "—"
+        aqi_i = 0
     }
+
+    // ── PLAN-002 生活指数（本地推导，零额外外呼；规则锚定 PLAN-002 §5.3）──
+    out.indices.push(LifeIndex { name: "穿衣", level: index_dressing(feels_f), note: "体感 " + out.feels })
+    out.indices.push(LifeIndex { name: "洗车", level: index_carwash(rain12h, precip_f), note: "未来12小时降水" })
+    out.indices.push(LifeIndex { name: "运动", level: index_sport(temp_f, aqi_i, precip_f), note: "温度·空气·降水综合" })
+    out.indices.push(LifeIndex { name: "感冒", level: index_cold(tmax0, tmin0), note: "今日温差与低温" })
+    out.indices.push(LifeIndex { name: "紫外线", level: out.uv, note: "紫外线指数 " + fmt_i(uv_f) })
 
     out.ok = true
     out.error = ""
