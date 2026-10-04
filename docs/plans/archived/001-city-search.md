@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-001
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: 城市搜索与多城市管理
 author: [agent]
 created_at: 2026-10-04T04:00:00Z
@@ -186,6 +187,25 @@ AutoLang `.at`（`#[api]`/widget/VM merged）、Open-Meteo Geocoding API、
   evidence: 复审复现 /tmp/review-smoke1.out（21/21，pre-state 持久化）；
   worktree 零脏文件（status 0 行）；worktree 定位 git worktree list 实证 |
   next: merge`。复审局限声明：复审与实施同会话，结论全部经工件与复现命令重建。
+- `stage: merge | PLAN-001:r1 | outcome: pass`——归并收据（按检查点）：
+  `prepared`: 复审基线 r1/pass @ f7eb776；冻结增量 SD-01（docs/specs/
+  weather-app.md F-P0-01 标注）/SD-02（README 用法行）；交付提交 f7eb776；
+  口径裁定：交付线 = v0.6-dev（伞形 .gitmodules 跟踪线；main 保导入基线）；
+  本仓无 .autoos 台账设施，ledger_refreshed 记 N/A（canonical Specs 即
+  docs/specs/*.md；不为本计划新建台账）；SD-02 落 README 登记约定：README
+  承载用法文档，规格知识只在 docs/specs/。
+  `landed`: worktree rebase 到 v0.6-dev 后 `git merge --ff-only`——
+  v0.6-dev tip = 7511bc32cf3bc0c0775b585e11b7e4605331928e = 交付提交
+  （rebase 改写映射 8acf396→4556eba、f7eb776→7511bc3；
+  `git range-diff` 两条均 `=`，补丁等价证明在案）；主检出集成冒烟
+  21/21 exit 0（/tmp/merge-smoke.out，含持久化 pre-state 实证）。
+  `ledger_refreshed`: N/A（无台账设施，理由见 prepared；未新建）。
+  `archived`: docs/plans/archived/001-city-search.md，completion_kind:
+  delivered，git mv 保留历史。
+  `cleaned`: wt-guard.sh 在 D:/autostack/ 缺失（exit 127，工具链路径与
+  auto-musk 文档假设不符）——以人工等价核查替代：worktree 路径在既定组
+  D:/autostack/.wt/weather-001/ 内、git status 零脏、rebase 后无未落地
+  提交；worktree 与 plan-001-dev 分支已移除（组目录已删）。
 
 ## 10. 待澄清事项
 
