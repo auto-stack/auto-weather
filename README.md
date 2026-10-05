@@ -40,7 +40,7 @@ auto run -r vm
   ↑↓ 排序与删除。设置存于 `local_data_dir/settings.json`。
 - **i18n**（PLAN-007）：设置卡切 中文/English——界面文案即时切换；报文文案
   （星期/生活指数/AQI 等级/风向/天气现象）与搜索结果随下次取数生效；内置
-  城市英名表；QWeather 三端点 `lang` 参数直连（probe 实证，勿需本地映射表）。
+  城市英名表；QWeather 三端点 `lang` 参数直连（probe 实证，无需本地映射表）。
   语言存 `settings.json` 的 `lang`（zh/en）。
 - **QWeather**：双 provider 之一（PLAN-005）。设 `QWEATHER_KEY` env 时实况/
   24h/7 日/空气优先走 QWeather（`?key=` 查询参数认证——Bearer 头 401 实测），

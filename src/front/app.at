@@ -146,7 +146,6 @@ widget App {
         var live bool = false
         // PLAN-007 t_*：界面文案变量（zh 为模型默认；en 由 Init/SetLang
         // 大块赋值。r9：handler 不调用 helper，两语块内联两处）
-        var t_updated_pre str = "更新于"
         var t_layout_land str = "横屏"
         var t_layout_port str = "竖屏"
         var t_refresh str = "刷新"
@@ -991,7 +990,6 @@ widget App {
             // PLAN-007：持久化 lang=en → t_* 全量切英（zh 侧保持模型默认，
             // 无需 else 块）
             if .lang == "en" {
-                .t_updated_pre = "Updated"
                 .t_layout_land = "Landscape"
                 .t_layout_port = "Portrait"
                 .t_refresh = "Refresh"
@@ -1331,7 +1329,6 @@ widget App {
         .SetLang(l) -> {
             .lang = l
             if .lang == "en" {
-                .t_updated_pre = "Updated"
                 .t_layout_land = "Landscape"
                 .t_layout_port = "Portrait"
                 .t_refresh = "Refresh"
@@ -1376,7 +1373,6 @@ widget App {
                 .t_live_pre = "Live · "
                 .t_search_empty = "No results (or network unavailable)"
             } else {
-                .t_updated_pre = "更新于"
                 .t_layout_land = "横屏"
                 .t_layout_port = "竖屏"
                 .t_refresh = "刷新"

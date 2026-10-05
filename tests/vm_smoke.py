@@ -880,7 +880,7 @@ def main() -> int:
             ok_en_ui = "Settings" in snap_en and "Search" in snap_en
             ok_en_data = "Now" in snap_en
             results.append(("en UI labels (Settings/Search)", ok_en_ui))
-            print(f"  {'PASS' if ok_en_data else 'FAIL'}: en data label Now")
+            print(f"  {'PASS' if ok_en_ui else 'FAIL'}: en UI labels")
             if not ok_en_ui:
                 failed += 1
             results.append(("en data label (Now)", ok_en_data))
