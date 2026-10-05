@@ -849,6 +849,66 @@ def main() -> int:
             print(f"  FAIL: T12 {e}")
             failed += 1
 
+        print("\n=== T13 i18n lang switch (PLAN-007) ===")
+        try:
+            # 设置卡自 T11 保持打开；不在则点齿轮（防御中断续跑）
+            snap0 = mcp.snapshot()
+            if "温度单位" not in snap0 and "Temp unit" not in snap0:
+                gid = find_clickable_for_label(snap0, "⚙️")
+                if not gid:
+                    raise RuntimeError("gear not found")
+                mcp.click(gid)
+                time.sleep(1.0)
+            # ① 切 English：state lang=en + 界面即时英化
+            ebtn = find_clickable_for_label(mcp.snapshot(), "English")
+            if not ebtn:
+                raise RuntimeError("English button not found")
+            mcp.click(ebtn)
+            time.sleep(1.5)
+            ok_en = '"en"' in mcp.state("lang")
+            results.append(("lang switch to en (state)", ok_en))
+            print(f"  {'PASS' if ok_en else 'FAIL'}: lang=en state")
+            if not ok_en:
+                failed += 1
+            # ② 刷新：报文语言随数据面（首小时标签 Now + 界面 Settings/Search）
+            rfr = find_clickable_for_label(mcp.snapshot(), "Refresh")
+            if not rfr:
+                raise RuntimeError("Refresh button not found")
+            mcp.click(rfr)
+            time.sleep(5.0)
+            snap_en = mcp.snapshot()
+            ok_en_ui = "Settings" in snap_en and "Search" in snap_en
+            ok_en_data = "Now" in snap_en
+            results.append(("en UI labels (Settings/Search)", ok_en_ui))
+            print(f"  {'PASS' if ok_en_data else 'FAIL'}: en data label Now")
+            if not ok_en_ui:
+                failed += 1
+            results.append(("en data label (Now)", ok_en_data))
+            print(f"  {'PASS' if ok_en_data else 'FAIL'}: en data label Now")
+            if not ok_en_data:
+                failed += 1
+            # ③ 还原中文（跨运行卫生双保险）：刷新后快照含"设置"
+            zbtn = find_clickable_for_label(snap_en, "中文")
+            if not zbtn:
+                raise RuntimeError("中文 button not found")
+            mcp.click(zbtn)
+            time.sleep(1.5)
+            rfz = find_clickable_for_label(mcp.snapshot(), "刷新")
+            if not rfz:
+                raise RuntimeError("刷新 button not found")
+            mcp.click(rfz)
+            time.sleep(5.0)
+            snap_zh = mcp.snapshot()
+            ok_zh = "设置" in snap_zh and '"zh"' in mcp.state("lang")
+            results.append(("restored zh (设置 visible)", ok_zh))
+            print(f"  {'PASS' if ok_zh else 'FAIL'}: restored zh")
+            if not ok_zh:
+                failed += 1
+        except Exception as e:
+            results.append(("T13 i18n", False))
+            print(f"  FAIL: T13 {e}")
+            failed += 1
+
     finally:
         proc.terminate()
         try:

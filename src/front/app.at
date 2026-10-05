@@ -59,7 +59,7 @@ style aqi_mid = "text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-prima
 // 物化——os-config VG12-14 终版 API 形状规则）。
 use back.api: weather_report, weather_search, cities_get, cities_add, cities_remove, weather_report_at, settings_get, settings_set, cities_move
 
-// PLAN-007 i18n 占位：lang 贯穿取数链（label 变量化随 T-03 落地）
+// PLAN-007 i18n：lang 贯穿取数链；界面文案全量 t_* 变量化（见 model）
 
 widget App {
     msg {
@@ -76,6 +76,7 @@ widget App {
         SetWindUnit(str),
         CycleDefaultCity,
         MoveCustom(str, str),
+        SetLang(str),
         Init
     }
 
@@ -141,9 +142,57 @@ widget App {
         var settings_open bool = false
         // PLAN-007：界面语言（zh/en；label 变量化后全面生效）
         var lang str = "zh"
+        // PLAN-007：取数成功置真——语言切换时演示注记是否重刷的依据
+        var live bool = false
+        // PLAN-007 t_*：界面文案变量（zh 为模型默认；en 由 Init/SetLang
+        // 大块赋值。r9：handler 不调用 helper，两语块内联两处）
+        var t_updated_pre str = "更新于"
+        var t_layout_land str = "横屏"
+        var t_layout_port str = "竖屏"
+        var t_refresh str = "刷新"
+        var t_refreshing str = "刷新中…"
+        var t_search_ph str = "搜索城市（中文/拼音）"
+        var t_search str = "搜索"
+        var t_settings str = "设置"
+        var t_temp_unit str = "温度单位"
+        var t_wind_unit str = "风速单位"
+        var t_default_city str = "默认城市"
+        var t_default_pre str = "默认:"
+        var t_tab_hourly str = "24小时"
+        var t_tab_daily str = "5日"
+        var t_details str = "当前详情"
+        var t_indices str = "生活指数"
+        var t_precip str = "24小时降水"
+        var t_humidity str = "湿度"
+        var t_wind str = "风速"
+        var t_feels str = "体感"
+        var t_uv str = "紫外线"
+        var t_aqi_good str = "优"
+        var t_aqi_bad str = "轻度污染"
+        var t_visibility str = "能见度"
+        var t_pressure str = "气压"
+        var t_updated str = "更新"
+        var t_data str = "数据"
+        var t_now str = "现在"
+        var t_today str = "今天"
+        var t_lang_label str = "语言"
+        var t_city_beijing str = "北京"
+        var t_city_shanghai str = "上海"
+        var t_city_guangzhou str = "广州"
+        var t_city_shenzhen str = "深圳"
+        var t_city_hangzhou str = "杭州"
+        var t_city_chengdu str = "成都"
+        var t_city_xian str = "西安"
+        var t_city_wuhan str = "武汉"
+        var t_city_harbin str = "哈尔滨"
+        var t_city_sanya str = "三亚"
+        var t_data_note_demo str = "演示数据 · 非实时气象"
+        var t_source_demo str = "演示样本"
+        var t_live_pre str = "实时数据 · "
+        var t_search_empty str = "无结果（或网络不可用）"
         var refreshing bool = false
         var hourly = [
-            { time: "现在", icon: "⛅", temp: "23°", now: true },
+            { time: .t_now, icon: "⛅", temp: "23°", now: true },
             { time: "15:00", icon: "⛅", temp: "24°", now: false },
             { time: "16:00", icon: "⛅", temp: "24°", now: false },
             { time: "17:00", icon: "☁️", temp: "23°", now: false },
@@ -153,7 +202,7 @@ widget App {
             { time: "21:00", icon: "⛅", temp: "20°", now: false }
         ]
         var daily = [
-            { day: "今天", icon: "⛅", cond: "多云", tmin: "18°", tmax: "25°" },
+            { day: .t_today, icon: "⛅", cond: "多云", tmin: "18°", tmax: "25°" },
             { day: "周二", icon: "☀️", cond: "晴", tmin: "20°", tmax: "28°" },
             { day: "周三", icon: "☁️", cond: "阴", tmin: "16°", tmax: "22°" },
             { day: "周四", icon: "🌧️", cond: "小雨", tmin: "17°", tmax: "24°" },
@@ -184,8 +233,46 @@ widget App {
                     style: "w-full items-center gap-3"
                     col {
                         style: "gap-0.5 min-w-0"
-                        text .city_zh { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
-                        text f"更新于 ${.updated_at}" { style: hint_text }
+                        // PLAN-007：城市名随语言——内置城绑 t_city_*（与 pill
+                        // 同源），自定义城（city_id==""）用取数名
+                        if .city_id == "beijing" {
+                            text .t_city_beijing { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
+                        }
+                        if .city_id == "shanghai" {
+                            text .t_city_shanghai { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
+                        }
+                        if .city_id == "guangzhou" {
+                            text .t_city_guangzhou { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
+                        }
+                        if .city_id == "shenzhen" {
+                            text .t_city_shenzhen { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
+                        }
+                        if .city_id == "hangzhou" {
+                            text .t_city_hangzhou { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
+                        }
+                        if .city_id == "chengdu" {
+                            text .t_city_chengdu { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
+                        }
+                        if .city_id == "xian" {
+                            text .t_city_xian { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
+                        }
+                        if .city_id == "wuhan" {
+                            text .t_city_wuhan { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
+                        }
+                        if .city_id == "harbin" {
+                            text .t_city_harbin { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
+                        }
+                        if .city_id == "sanya" {
+                            text .t_city_sanya { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
+                        }
+                        if .city_id == "" {
+                            text .city_zh { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
+                        }
+                        if .lang == "en" {
+                            text f"Updated ${.updated_at}" { style: hint_text }
+                        } else {
+                            text f"更新于 ${.updated_at}" { style: hint_text }
+                        }
                     }
                     row {
                         style: "ml-auto items-center gap-2 shrink-0"
@@ -193,21 +280,21 @@ widget App {
                         row {
                             style: "items-center gap-1 mr-1"
                             if .layout_mode == "landscape" {
-                                button "横屏" { onclick: .SetLayout("landscape"), variant: "primary", style: layout_btn_on }
+                                button .t_layout_land { onclick: .SetLayout("landscape"), variant: "primary", style: layout_btn_on }
                             } else {
-                                button "横屏" { onclick: .SetLayout("landscape"), variant: "secondary", style: layout_btn_off }
+                                button .t_layout_land { onclick: .SetLayout("landscape"), variant: "secondary", style: layout_btn_off }
                             }
                             if .layout_mode == "portrait" {
-                                button "竖屏" { onclick: .SetLayout("portrait"), variant: "primary", style: layout_btn_on }
+                                button .t_layout_port { onclick: .SetLayout("portrait"), variant: "primary", style: layout_btn_on }
                             } else {
-                                button "竖屏" { onclick: .SetLayout("portrait"), variant: "secondary", style: layout_btn_off }
+                                button .t_layout_port { onclick: .SetLayout("portrait"), variant: "secondary", style: layout_btn_off }
                             }
                         }
                         // a2r：参数形按钮（子节点 text 会生成 button("")）
                         if .refreshing {
-                            button "刷新中…" { onclick: .Refresh, variant: "primary", style: refresh_busy }
+                            button .t_refreshing { onclick: .Refresh, variant: "primary", style: refresh_busy }
                         } else {
-                            button "刷新" { onclick: .Refresh, variant: "primary", style: refresh_idle }
+                            button .t_refresh { onclick: .Refresh, variant: "primary", style: refresh_idle }
                         }
                         if .dark_mode {
                             button "☀️" { onclick: .ToggleTheme, style: icon_btn }
@@ -221,8 +308,8 @@ widget App {
                 // ── PLAN-001/004：城市搜索（横屏；竖屏同块在 portrait 分支）──
                 row {
                     style: "w-full items-center gap-2"
-                    input { placeholder: "搜索城市（中文/拼音）", value: .search_q, oninput: .SearchChanged, style: "flex-1 px-3 py-1.5 text-xs rounded-full border border-border bg-background text-foreground outline-none" }
-                    button "搜索" { onclick: .DoSearch, variant: "primary", style: refresh_idle }
+                    input { placeholder: .t_search_ph, value: .search_q, oninput: .SearchChanged, style: "flex-1 px-3 py-1.5 text-xs rounded-full border border-border bg-background text-foreground outline-none" }
+                    button .t_search { onclick: .DoSearch, variant: "primary", style: refresh_idle }
                 }
                 if .search_err != "" {
                     text .search_err { style: hint_text }
@@ -244,54 +331,54 @@ widget App {
                             // a2r：[]str for 循环元素类型为 Value，与 String 比较失败；
                             // 城市按钮全部展开，避免 for + 列表元素。
                             if .city_id == "beijing" {
-                                button "北京" { onclick: .SelectCity("beijing"), variant: "primary", style: city_pill_on }
+                                button .t_city_beijing { onclick: .SelectCity("beijing"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "北京" { onclick: .SelectCity("beijing"), variant: "secondary", style: city_pill_off }
+                                button .t_city_beijing { onclick: .SelectCity("beijing"), variant: "secondary", style: city_pill_off }
                             }
                             if .city_id == "shanghai" {
-                                button "上海" { onclick: .SelectCity("shanghai"), variant: "primary", style: city_pill_on }
+                                button .t_city_shanghai { onclick: .SelectCity("shanghai"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "上海" { onclick: .SelectCity("shanghai"), variant: "secondary", style: city_pill_off }
+                                button .t_city_shanghai { onclick: .SelectCity("shanghai"), variant: "secondary", style: city_pill_off }
                             }
                             if .city_id == "guangzhou" {
-                                button "广州" { onclick: .SelectCity("guangzhou"), variant: "primary", style: city_pill_on }
+                                button .t_city_guangzhou { onclick: .SelectCity("guangzhou"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "广州" { onclick: .SelectCity("guangzhou"), variant: "secondary", style: city_pill_off }
+                                button .t_city_guangzhou { onclick: .SelectCity("guangzhou"), variant: "secondary", style: city_pill_off }
                             }
                             if .city_id == "shenzhen" {
-                                button "深圳" { onclick: .SelectCity("shenzhen"), variant: "primary", style: city_pill_on }
+                                button .t_city_shenzhen { onclick: .SelectCity("shenzhen"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "深圳" { onclick: .SelectCity("shenzhen"), variant: "secondary", style: city_pill_off }
+                                button .t_city_shenzhen { onclick: .SelectCity("shenzhen"), variant: "secondary", style: city_pill_off }
                             }
                             if .city_id == "hangzhou" {
-                                button "杭州" { onclick: .SelectCity("hangzhou"), variant: "primary", style: city_pill_on }
+                                button .t_city_hangzhou { onclick: .SelectCity("hangzhou"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "杭州" { onclick: .SelectCity("hangzhou"), variant: "secondary", style: city_pill_off }
+                                button .t_city_hangzhou { onclick: .SelectCity("hangzhou"), variant: "secondary", style: city_pill_off }
                             }
                             if .city_id == "chengdu" {
-                                button "成都" { onclick: .SelectCity("chengdu"), variant: "primary", style: city_pill_on }
+                                button .t_city_chengdu { onclick: .SelectCity("chengdu"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "成都" { onclick: .SelectCity("chengdu"), variant: "secondary", style: city_pill_off }
+                                button .t_city_chengdu { onclick: .SelectCity("chengdu"), variant: "secondary", style: city_pill_off }
                             }
                             if .city_id == "xian" {
-                                button "西安" { onclick: .SelectCity("xian"), variant: "primary", style: city_pill_on }
+                                button .t_city_xian { onclick: .SelectCity("xian"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "西安" { onclick: .SelectCity("xian"), variant: "secondary", style: city_pill_off }
+                                button .t_city_xian { onclick: .SelectCity("xian"), variant: "secondary", style: city_pill_off }
                             }
                             if .city_id == "wuhan" {
-                                button "武汉" { onclick: .SelectCity("wuhan"), variant: "primary", style: city_pill_on }
+                                button .t_city_wuhan { onclick: .SelectCity("wuhan"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "武汉" { onclick: .SelectCity("wuhan"), variant: "secondary", style: city_pill_off }
+                                button .t_city_wuhan { onclick: .SelectCity("wuhan"), variant: "secondary", style: city_pill_off }
                             }
                             if .city_id == "harbin" {
-                                button "哈尔滨" { onclick: .SelectCity("harbin"), variant: "primary", style: city_pill_on }
+                                button .t_city_harbin { onclick: .SelectCity("harbin"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "哈尔滨" { onclick: .SelectCity("harbin"), variant: "secondary", style: city_pill_off }
+                                button .t_city_harbin { onclick: .SelectCity("harbin"), variant: "secondary", style: city_pill_off }
                             }
                             if .city_id == "sanya" {
-                                button "三亚" { onclick: .SelectCity("sanya"), variant: "primary", style: city_pill_on }
+                                button .t_city_sanya { onclick: .SelectCity("sanya"), variant: "primary", style: city_pill_on }
                             } else {
-                                button "三亚" { onclick: .SelectCity("sanya"), variant: "secondary", style: city_pill_off }
+                                button .t_city_sanya { onclick: .SelectCity("sanya"), variant: "secondary", style: city_pill_off }
                             }
                             // PLAN-001：自定义城市 pill（动态 for 渲染）
                             for c in .custom_pills {
@@ -306,10 +393,10 @@ widget App {
                 if .settings_open {
                     col {
                         style: "w-full gap-2 bg-card border border-border rounded-2xl p-3"
-                        text "设置" { style: section_title }
+                        text .t_settings { style: section_title }
                         row {
                             style: "w-full items-center gap-2"
-                            text "温度单位" { style: "text-xs text-muted-foreground w-16 shrink-0" }
+                            text .t_temp_unit { style: "text-xs text-muted-foreground w-16 shrink-0" }
                             if .s_temp_unit == "c" {
                                 button "°C" { onclick: .SetTempUnit("c"), variant: "primary", style: fc_tab_on }
                             } else {
@@ -323,7 +410,7 @@ widget App {
                         }
                         row {
                             style: "w-full items-center gap-2"
-                            text "风速单位" { style: "text-xs text-muted-foreground w-16 shrink-0" }
+                            text .t_wind_unit { style: "text-xs text-muted-foreground w-16 shrink-0" }
                             if .s_wind_unit == "kmh" {
                                 button "km/h" { onclick: .SetWindUnit("kmh"), variant: "primary", style: fc_tab_on }
                             } else {
@@ -337,8 +424,23 @@ widget App {
                         }
                         row {
                             style: "w-full items-center gap-2"
-                            text "默认城市" { style: "text-xs text-muted-foreground w-16 shrink-0" }
+                            text .t_default_city { style: "text-xs text-muted-foreground w-16 shrink-0" }
                             button .s_default_label { onclick: .CycleDefaultCity, variant: "secondary", style: fc_tab_off }
+                        }
+                        // PLAN-007：语言切换（zh/en；按钮文案保持自语言固定）
+                        row {
+                            style: "w-full items-center gap-2"
+                            text .t_lang_label { style: "text-xs text-muted-foreground w-16 shrink-0" }
+                            if .lang == "zh" {
+                                button "中文" { onclick: .SetLang("zh"), variant: "primary", style: fc_tab_on }
+                            } else {
+                                button "中文" { onclick: .SetLang("zh"), variant: "secondary", style: fc_tab_off }
+                            }
+                            if .lang == "en" {
+                                button "English" { onclick: .SetLang("en"), variant: "primary", style: fc_tab_on }
+                            } else {
+                                button "English" { onclick: .SetLang("en"), variant: "secondary", style: fc_tab_off }
+                            }
                         }
                         // 城市管理：排序（↑↓）+ 删除（✕）
                         for c in .custom_pills {
@@ -386,9 +488,21 @@ widget App {
                                 text .temp { style: "text-6xl font-light text-white leading-none tracking-tight" }
                                 row {
                                     style: "items-center gap-2 text-white/90 text-xs mt-1 flex-wrap justify-center"
-                                    text f"体感 ${.feels}" {}
-                                    text f"湿度 ${.humidity}" {}
-                                    text f"风 ${.wind}" {}
+                                    if .lang == "en" {
+                                        text f"Feels like ${.feels}" {}
+                                    } else {
+                                        text f"体感 ${.feels}" {}
+                                    }
+                                    if .lang == "en" {
+                                        text f"Humidity ${.humidity}" {}
+                                    } else {
+                                        text f"湿度 ${.humidity}" {}
+                                    }
+                                    if .lang == "en" {
+                                        text f"Wind ${.wind}" {}
+                                    } else {
+                                        text f"风 ${.wind}" {}
+                                    }
                                 }
                             }
 
@@ -402,14 +516,14 @@ widget App {
                                     row {
                                         style: "w-full items-center gap-2"
                                         if .forecast_tab == "hourly" {
-                                            button "24小时" { onclick: .SetForecastTab("hourly"), variant: "primary", style: fc_tab_on }
+                                            button .t_tab_hourly { onclick: .SetForecastTab("hourly"), variant: "primary", style: fc_tab_on }
                                         } else {
-                                            button "24小时" { onclick: .SetForecastTab("hourly"), variant: "secondary", style: fc_tab_off }
+                                            button .t_tab_hourly { onclick: .SetForecastTab("hourly"), variant: "secondary", style: fc_tab_off }
                                         }
                                         if .forecast_tab == "daily" {
-                                            button "5日" { onclick: .SetForecastTab("daily"), variant: "primary", style: fc_tab_on }
+                                            button .t_tab_daily { onclick: .SetForecastTab("daily"), variant: "primary", style: fc_tab_on }
                                         } else {
-                                            button "5日" { onclick: .SetForecastTab("daily"), variant: "secondary", style: fc_tab_off }
+                                            button .t_tab_daily { onclick: .SetForecastTab("daily"), variant: "secondary", style: fc_tab_off }
                                         }
                                     }
 
@@ -418,7 +532,7 @@ widget App {
                                             row {
                                                 style: "items-center gap-2 h-36"
                                                 for h in .hourly {
-                                                    if h.time == "现在" {
+                                                    if h.time == .t_now {
                                                         col {
                                                             style: hour_card_now
                                                             text h.time { style: "text-[10px] font-semibold text-primary" }
@@ -444,7 +558,7 @@ widget App {
                                             row {
                                                 style: "items-center gap-2 h-36"
                                                 for d in .daily {
-                                                    if d.day == "今天" {
+                                                    if d.day == .t_today {
                                                         col {
                                                             style: day_card_now
                                                             text d.day { style: "text-[10px] font-semibold text-primary" }
@@ -470,22 +584,22 @@ widget App {
                                 // 当前详情
                                 col {
                                     style: "w-full gap-2"
-                                    text "当前详情" { style: section_title }
+                                    text .t_details { style: section_title }
                                     row {
                                         style: "w-full gap-2"
                                         col {
                                             style: metric_card
-                                            text "湿度" { style: metric_label }
+                                            text .t_humidity { style: metric_label }
                                             text .humidity { style: metric_value }
                                         }
                                         col {
                                             style: metric_card
-                                            text "风速" { style: metric_label }
+                                            text .t_wind { style: metric_label }
                                             text .wind { style: metric_value }
                                         }
                                         col {
                                             style: metric_card
-                                            text "体感" { style: metric_label }
+                                            text .t_feels { style: metric_label }
                                             text .feels { style: metric_value }
                                         }
                                     }
@@ -493,7 +607,7 @@ widget App {
                                         style: "w-full gap-2"
                                         col {
                                             style: metric_card
-                                            text "紫外线" { style: metric_label }
+                                            text .t_uv { style: metric_label }
                                             text .uv { style: metric_value }
                                         }
                                         col {
@@ -501,9 +615,9 @@ widget App {
                                             row {
                                                 style: "items-center gap-1"
                                                 text "AQI" { style: metric_label }
-                                                if .aqi_level == "优" {
+                                                if .aqi_level == .t_aqi_good {
                                                     text .aqi_level { style: aqi_good }
-                                                } else if .aqi_level == "轻度污染" {
+                                                } else if .aqi_level == .t_aqi_bad {
                                                     text .aqi_level { style: aqi_warn }
                                                 } else {
                                                     text .aqi_level { style: aqi_mid }
@@ -513,7 +627,7 @@ widget App {
                                         }
                                         col {
                                             style: metric_card
-                                            text "能见度" { style: metric_label }
+                                            text .t_visibility { style: metric_label }
                                             text .visibility { style: metric_value }
                                         }
                                     }
@@ -521,17 +635,17 @@ widget App {
                                         style: "w-full gap-2"
                                         col {
                                             style: metric_card
-                                            text "气压" { style: metric_label }
+                                            text .t_pressure { style: metric_label }
                                             text .pressure { style: metric_value }
                                         }
                                         col {
                                             style: metric_card
-                                            text "更新" { style: metric_label }
+                                            text .t_updated { style: metric_label }
                                             text .updated_at { style: metric_value }
                                         }
                                         col {
                                             style: metric_card
-                                            text "数据" { style: metric_label }
+                                            text .t_data { style: metric_label }
                                             text .source_label { style: "text-xs text-muted-foreground" }
                                         }
                                     }
@@ -558,7 +672,7 @@ widget App {
                                 // PLAN-002：生活指数区（for 零迭代安全）
                                 col {
                                     style: "w-full gap-2"
-                                    text "生活指数" { style: section_title }
+                                    text .t_indices { style: section_title }
                                     row {
                                         style: "w-full gap-2"
                                         for it in .indices {
@@ -574,7 +688,7 @@ widget App {
                                 // PLAN-003：24小时降水（bar class 后端预拼）
                                 col {
                                     style: "w-full gap-2"
-                                    text "24小时降水" { style: section_title }
+                                    text .t_precip { style: section_title }
                                     scroll (axis: "x", style: "w-full h-28") {
                                         row {
                                             style: "items-end gap-1.5 h-24"
@@ -629,31 +743,43 @@ widget App {
                                 text .temp { style: "text-7xl font-light text-white leading-none tracking-tight" }
                                 row {
                                     style: "items-center gap-3 text-white/90 text-xs mt-1"
-                                    text f"体感 ${.feels}" {}
-                                    text f"湿度 ${.humidity}" {}
-                                    text f"风 ${.wind}" {}
+                                    if .lang == "en" {
+                                        text f"Feels like ${.feels}" {}
+                                    } else {
+                                        text f"体感 ${.feels}" {}
+                                    }
+                                    if .lang == "en" {
+                                        text f"Humidity ${.humidity}" {}
+                                    } else {
+                                        text f"湿度 ${.humidity}" {}
+                                    }
+                                    if .lang == "en" {
+                                        text f"Wind ${.wind}" {}
+                                    } else {
+                                        text f"风 ${.wind}" {}
+                                    }
                                 }
                             }
 
                             // 指标
                             col {
                                 style: "w-full gap-2"
-                                text "当前详情" { style: section_title }
+                                text .t_details { style: section_title }
                                 row {
                                     style: "w-full gap-2"
                                     col {
                                         style: metric_card
-                                        text "湿度" { style: metric_label }
+                                        text .t_humidity { style: metric_label }
                                         text .humidity { style: metric_value }
                                     }
                                     col {
                                         style: metric_card
-                                        text "风速" { style: metric_label }
+                                        text .t_wind { style: metric_label }
                                         text .wind { style: metric_value }
                                     }
                                     col {
                                         style: metric_card
-                                        text "体感" { style: metric_label }
+                                        text .t_feels { style: metric_label }
                                         text .feels { style: metric_value }
                                     }
                                 }
@@ -661,7 +787,7 @@ widget App {
                                     style: "w-full gap-2"
                                     col {
                                         style: metric_card
-                                        text "紫外线" { style: metric_label }
+                                        text .t_uv { style: metric_label }
                                         text .uv { style: metric_value }
                                     }
                                     col {
@@ -669,9 +795,9 @@ widget App {
                                         row {
                                             style: "items-center gap-1"
                                             text "AQI" { style: metric_label }
-                                            if .aqi_level == "优" {
+                                            if .aqi_level == .t_aqi_good {
                                                 text .aqi_level { style: aqi_good }
-                                            } else if .aqi_level == "轻度污染" {
+                                            } else if .aqi_level == .t_aqi_bad {
                                                 text .aqi_level { style: aqi_warn }
                                             } else {
                                                 text .aqi_level { style: aqi_mid }
@@ -681,7 +807,7 @@ widget App {
                                     }
                                     col {
                                         style: metric_card
-                                        text "能见度" { style: metric_label }
+                                        text .t_visibility { style: metric_label }
                                         text .visibility { style: metric_value }
                                     }
                                 }
@@ -689,17 +815,17 @@ widget App {
                                     style: "w-full gap-2"
                                     col {
                                         style: metric_card
-                                        text "气压" { style: metric_label }
+                                        text .t_pressure { style: metric_label }
                                         text .pressure { style: metric_value }
                                     }
                                     col {
                                         style: metric_card
-                                        text "更新" { style: metric_label }
+                                        text .t_updated { style: metric_label }
                                         text .updated_at { style: metric_value }
                                     }
                                     col {
                                         style: metric_card
-                                        text "数据" { style: metric_label }
+                                        text .t_data { style: metric_label }
                                         text .source_label { style: "text-xs text-muted-foreground" }
                                     }
                                 }
@@ -730,14 +856,14 @@ widget App {
                                 row {
                                     style: "w-full items-center gap-2"
                                     if .forecast_tab == "hourly" {
-                                        button "24小时" { onclick: .SetForecastTab("hourly"), variant: "primary", style: fc_tab_on }
+                                        button .t_tab_hourly { onclick: .SetForecastTab("hourly"), variant: "primary", style: fc_tab_on }
                                     } else {
-                                        button "24小时" { onclick: .SetForecastTab("hourly"), variant: "secondary", style: fc_tab_off }
+                                        button .t_tab_hourly { onclick: .SetForecastTab("hourly"), variant: "secondary", style: fc_tab_off }
                                     }
                                     if .forecast_tab == "daily" {
-                                        button "5日" { onclick: .SetForecastTab("daily"), variant: "primary", style: fc_tab_on }
+                                        button .t_tab_daily { onclick: .SetForecastTab("daily"), variant: "primary", style: fc_tab_on }
                                     } else {
-                                        button "5日" { onclick: .SetForecastTab("daily"), variant: "secondary", style: fc_tab_off }
+                                        button .t_tab_daily { onclick: .SetForecastTab("daily"), variant: "secondary", style: fc_tab_off }
                                     }
                                 }
                                 if .forecast_tab == "hourly" {
@@ -745,7 +871,7 @@ widget App {
                                         row {
                                             style: "items-center gap-2 h-36"
                             for h in .hourly {
-                                if h.time == "现在" {
+                                if h.time == .t_now {
                                     col {
                                         style: hour_card_now
                                         text h.time { style: "text-[10px] font-semibold text-primary" }
@@ -769,7 +895,7 @@ widget App {
                                         row {
                                             style: "items-center gap-2 h-36"
                                             for d in .daily {
-                                                if d.day == "今天" {
+                                                if d.day == .t_today {
                                                     col {
                                                         style: day_card_now
                                                         text d.day { style: "text-[10px] font-semibold text-primary" }
@@ -796,7 +922,7 @@ widget App {
                             // iced 不支持——plan412 降级矩阵在册）
                             col {
                                 style: "w-full gap-2"
-                                text "生活指数" { style: section_title }
+                                text .t_indices { style: section_title }
                                 scroll (axis: "x", style: "w-full h-24") {
                                     row {
                                         style: "items-center gap-2 h-20"
@@ -814,7 +940,7 @@ widget App {
                             // PLAN-004：24小时降水（竖屏）
                             col {
                                 style: "w-full gap-2"
-                                text "24小时降水" { style: section_title }
+                                text .t_precip { style: section_title }
                                 scroll (axis: "x", style: "w-full h-28") {
                                     row {
                                         style: "items-end gap-1.5 h-24"
@@ -860,9 +986,57 @@ widget App {
                 .s_temp_unit = rs.temp_unit
                 .s_wind_unit = rs.wind_unit
                 .s_default_city = rs.default_city
-                .s_default_label = "默认:" + rs.default_city
                 .lang = rs.lang
             }
+            // PLAN-007：持久化 lang=en → t_* 全量切英（zh 侧保持模型默认，
+            // 无需 else 块）
+            if .lang == "en" {
+                .t_updated_pre = "Updated"
+                .t_layout_land = "Landscape"
+                .t_layout_port = "Portrait"
+                .t_refresh = "Refresh"
+                .t_refreshing = "Refreshing…"
+                .t_search_ph = "Search city (中文/拼音)"
+                .t_search = "Search"
+                .t_settings = "Settings"
+                .t_temp_unit = "Temp unit"
+                .t_wind_unit = "Wind unit"
+                .t_default_city = "Default city"
+                .t_default_pre = "Default: "
+                .t_tab_hourly = "24H"
+                .t_tab_daily = "5-Day"
+                .t_details = "Details"
+                .t_indices = "Life Indices"
+                .t_precip = "24H Precip"
+                .t_humidity = "Humidity"
+                .t_wind = "Wind"
+                .t_feels = "Feels like"
+                .t_uv = "UV"
+                .t_aqi_good = "Good"
+                .t_aqi_bad = "Unhealthy for Sensitive"
+                .t_visibility = "Visibility"
+                .t_pressure = "Pressure"
+                .t_updated = "Updated"
+                .t_data = "Source"
+                .t_now = "Now"
+                .t_today = "Today"
+                .t_lang_label = "Language"
+                .t_city_beijing = "Beijing"
+                .t_city_shanghai = "Shanghai"
+                .t_city_guangzhou = "Guangzhou"
+                .t_city_shenzhen = "Shenzhen"
+                .t_city_hangzhou = "Hangzhou"
+                .t_city_chengdu = "Chengdu"
+                .t_city_xian = "Xi'an"
+                .t_city_wuhan = "Wuhan"
+                .t_city_harbin = "Harbin"
+                .t_city_sanya = "Sanya"
+                .t_data_note_demo = "Demo data · Not live weather"
+                .t_source_demo = "Demo data"
+                .t_live_pre = "Live · "
+                .t_search_empty = "No results (or network unavailable)"
+            }
+            .s_default_label = .t_default_pre + .s_default_city
             .city_id = .s_default_city
             .city_zh = "北京"
             if .s_default_city == "shanghai" {
@@ -897,7 +1071,7 @@ widget App {
             .pressure = "1012 hPa"
             .visibility = "12 km"
             .hourly = [
-                { time: "现在", icon: "⛅", temp: "23°", now: true },
+                { time: .t_now, icon: "⛅", temp: "23°", now: true },
                 { time: "15:00", icon: "⛅", temp: "23°", now: false },
                 { time: "16:00", icon: "⛅", temp: "23°", now: false },
                 { time: "17:00", icon: "☁️", temp: "23°", now: false },
@@ -907,7 +1081,7 @@ widget App {
                 { time: "21:00", icon: "⛅", temp: "23°", now: false }
             ]
             .daily = [
-                { day: "今天", icon: "⛅", cond: "多云", tmin: "18°", tmax: "25°" },
+                { day: .t_today, icon: "⛅", cond: "多云", tmin: "18°", tmax: "25°" },
                 { day: "周二", icon: "☀️", cond: "晴", tmin: "20°", tmax: "28°" },
                 { day: "周三", icon: "☁️", cond: "阴", tmin: "16°", tmax: "22°" },
                 { day: "周四", icon: "🌧️", cond: "小雨", tmin: "17°", tmax: "24°" },
@@ -917,6 +1091,7 @@ widget App {
             // r10：起屏拉一次真实数据；失败静默保留上方演示样本
             let r = weather_report(.city_id, .s_temp_unit, .s_wind_unit, .lang)
             if r.ok {
+                .live = true
                 .condition = r.condition
                 .cond_zh = r.cond_zh
                 .icon = r.icon
@@ -932,7 +1107,7 @@ widget App {
                 .updated_at = r.updated_at
                 .hourly = r.hourly
                 .daily = r.daily
-                .data_note = "实时数据 · " + r.source
+                .data_note = .t_live_pre + r.source
                 .source_label = r.source
                 .pm25 = r.pm25
                 .pm10 = r.pm10
@@ -942,6 +1117,11 @@ widget App {
                 .alert_level = r.alert_level
                 .alert_title = r.alert_title
                 .alert_text = r.alert_text
+            }
+            if !r.ok {
+                // 演示态：注记随语言（live=false，切语言时同样重刷）
+                .data_note = .t_data_note_demo
+                .source_label = .t_source_demo
             }
             // PLAN-001：预填自定义城市（后端持久化；失败静默）
             let rc = cities_get()
@@ -986,7 +1166,7 @@ widget App {
                 }
             }
             if .search_hits.len() == 0 {
-                .search_err = "无结果（或网络不可用）"
+                .search_err = .t_search_empty
             }
         }
 
@@ -1054,6 +1234,7 @@ widget App {
                 .city_zh = nm
                 let r = weather_report_at(la, lo, .s_temp_unit, .s_wind_unit, .lang)
                 if r.ok {
+                    .live = true
                     .condition = r.condition
                     .cond_zh = r.cond_zh
                     .icon = r.icon
@@ -1069,7 +1250,7 @@ widget App {
                     .updated_at = r.updated_at
                     .hourly = r.hourly
                     .daily = r.daily
-                    .data_note = "实时数据 · " + r.source
+                    .data_note = .t_live_pre + r.source
                     .source_label = r.source
                     .pm25 = r.pm25
                     .pm10 = r.pm10
@@ -1141,7 +1322,110 @@ widget App {
                 nxt = "sanya"
             }
             .s_default_city = nxt
-            .s_default_label = "默认:" + nxt
+            .s_default_label = .t_default_pre + nxt
+            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city, .lang)
+        }
+
+        // PLAN-007：语言切换——t_* 全量赋值 + 持久化；数据面语言下次取数生效
+        // （界面即时）。演示态注记随语言重刷（live 守门）。
+        .SetLang(l) -> {
+            .lang = l
+            if .lang == "en" {
+                .t_updated_pre = "Updated"
+                .t_layout_land = "Landscape"
+                .t_layout_port = "Portrait"
+                .t_refresh = "Refresh"
+                .t_refreshing = "Refreshing…"
+                .t_search_ph = "Search city (中文/拼音)"
+                .t_search = "Search"
+                .t_settings = "Settings"
+                .t_temp_unit = "Temp unit"
+                .t_wind_unit = "Wind unit"
+                .t_default_city = "Default city"
+                .t_default_pre = "Default: "
+                .t_tab_hourly = "24H"
+                .t_tab_daily = "5-Day"
+                .t_details = "Details"
+                .t_indices = "Life Indices"
+                .t_precip = "24H Precip"
+                .t_humidity = "Humidity"
+                .t_wind = "Wind"
+                .t_feels = "Feels like"
+                .t_uv = "UV"
+                .t_aqi_good = "Good"
+                .t_aqi_bad = "Unhealthy for Sensitive"
+                .t_visibility = "Visibility"
+                .t_pressure = "Pressure"
+                .t_updated = "Updated"
+                .t_data = "Source"
+                .t_now = "Now"
+                .t_today = "Today"
+                .t_lang_label = "Language"
+                .t_city_beijing = "Beijing"
+                .t_city_shanghai = "Shanghai"
+                .t_city_guangzhou = "Guangzhou"
+                .t_city_shenzhen = "Shenzhen"
+                .t_city_hangzhou = "Hangzhou"
+                .t_city_chengdu = "Chengdu"
+                .t_city_xian = "Xi'an"
+                .t_city_wuhan = "Wuhan"
+                .t_city_harbin = "Harbin"
+                .t_city_sanya = "Sanya"
+                .t_data_note_demo = "Demo data · Not live weather"
+                .t_source_demo = "Demo data"
+                .t_live_pre = "Live · "
+                .t_search_empty = "No results (or network unavailable)"
+            } else {
+                .t_updated_pre = "更新于"
+                .t_layout_land = "横屏"
+                .t_layout_port = "竖屏"
+                .t_refresh = "刷新"
+                .t_refreshing = "刷新中…"
+                .t_search_ph = "搜索城市（中文/拼音）"
+                .t_search = "搜索"
+                .t_settings = "设置"
+                .t_temp_unit = "温度单位"
+                .t_wind_unit = "风速单位"
+                .t_default_city = "默认城市"
+                .t_default_pre = "默认:"
+                .t_tab_hourly = "24小时"
+                .t_tab_daily = "5日"
+                .t_details = "当前详情"
+                .t_indices = "生活指数"
+                .t_precip = "24小时降水"
+                .t_humidity = "湿度"
+                .t_wind = "风速"
+                .t_feels = "体感"
+                .t_uv = "紫外线"
+                .t_aqi_good = "优"
+                .t_aqi_bad = "轻度污染"
+                .t_visibility = "能见度"
+                .t_pressure = "气压"
+                .t_updated = "更新"
+                .t_data = "数据"
+                .t_now = "现在"
+                .t_today = "今天"
+                .t_lang_label = "语言"
+                .t_city_beijing = "北京"
+                .t_city_shanghai = "上海"
+                .t_city_guangzhou = "广州"
+                .t_city_shenzhen = "深圳"
+                .t_city_hangzhou = "杭州"
+                .t_city_chengdu = "成都"
+                .t_city_xian = "西安"
+                .t_city_wuhan = "武汉"
+                .t_city_harbin = "哈尔滨"
+                .t_city_sanya = "三亚"
+                .t_data_note_demo = "演示数据 · 非实时气象"
+                .t_source_demo = "演示样本"
+                .t_live_pre = "实时数据 · "
+                .t_search_empty = "无结果（或网络不可用）"
+            }
+            .s_default_label = .t_default_pre + .s_default_city
+            if !.live {
+                .data_note = .t_data_note_demo
+                .source_label = .t_source_demo
+            }
             settings_set(.s_temp_unit, .s_wind_unit, .s_default_city, .lang)
         }
 
@@ -1330,7 +1614,7 @@ widget App {
                 .visibility = "12 km"
             }
             .hourly = [
-                { time: "现在", icon: .icon, temp: .temp, now: true },
+                { time: .t_now, icon: .icon, temp: .temp, now: true },
                 { time: "15:00", icon: .icon, temp: .temp, now: false },
                 { time: "16:00", icon: .icon, temp: .temp, now: false },
                 { time: "17:00", icon: .icon, temp: .temp, now: false },
@@ -1340,7 +1624,7 @@ widget App {
                 { time: "21:00", icon: .icon, temp: .temp, now: false }
             ]
             .daily = [
-                { day: "今天", icon: .icon, cond: .cond_zh, tmin: .temp, tmax: .temp },
+                { day: .t_today, icon: .icon, cond: .cond_zh, tmin: .temp, tmax: .temp },
                 { day: "周二", icon: .icon, cond: .cond_zh, tmin: .temp, tmax: .temp },
                 { day: "周三", icon: "☁️", cond: "阴", tmin: .temp, tmax: .temp },
                 { day: "周四", icon: "🌧️", cond: "小雨", tmin: .temp, tmax: .temp },
@@ -1349,6 +1633,7 @@ widget App {
             // r10：切城后拉真实数据；失败保留上方该城演示样本
             let r = weather_report(id, .s_temp_unit, .s_wind_unit, .lang)
             if r.ok {
+                .live = true
                 .condition = r.condition
                 .cond_zh = r.cond_zh
                 .icon = r.icon
@@ -1364,7 +1649,7 @@ widget App {
                 .updated_at = r.updated_at
                 .hourly = r.hourly
                 .daily = r.daily
-                .data_note = "实时数据 · " + r.source
+                .data_note = .t_live_pre + r.source
                 .source_label = r.source
                 .pm25 = r.pm25
                 .pm10 = r.pm10
@@ -1401,6 +1686,7 @@ widget App {
                     did_custom = true
                     let rc2 = weather_report_at(la, lo, .s_temp_unit, .s_wind_unit, .lang)
                     if rc2.ok {
+                        .live = true
                         .condition = rc2.condition
                         .cond_zh = rc2.cond_zh
                         .icon = rc2.icon
@@ -1416,7 +1702,7 @@ widget App {
                         .updated_at = rc2.updated_at
                         .hourly = rc2.hourly
                         .daily = rc2.daily
-                        .data_note = "实时数据 · " + rc2.source
+                        .data_note = .t_live_pre + rc2.source
                         .source_label = rc2.source
                         .pm25 = rc2.pm25
                         .pm10 = rc2.pm10
@@ -1432,6 +1718,7 @@ widget App {
             if !did_custom {
                 let r = weather_report(.city_id, .s_temp_unit, .s_wind_unit, .lang)
                 if r.ok {
+                    .live = true
                     .condition = r.condition
                     .cond_zh = r.cond_zh
                     .icon = r.icon
@@ -1447,7 +1734,7 @@ widget App {
                     .updated_at = r.updated_at
                     .hourly = r.hourly
                     .daily = r.daily
-                    .data_note = "实时数据 · " + r.source
+                    .data_note = .t_live_pre + r.source
                     .source_label = r.source
                     .pm25 = r.pm25
                     .pm10 = r.pm10

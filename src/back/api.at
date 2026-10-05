@@ -147,16 +147,8 @@ fn L(zh str, en str, lang str) str {
     return zh
 }
 
-// 天气类别英文表（QW API text 恒中文；OM 路径走 cond_zh_for 的 L 化）
-fn cond_en_for(cat str) str {
-    if cat == "sunny" { return "Clear" }
-    if cat == "rain" { return "Rain" }
-    if cat == "storm" { return "Thunderstorm" }
-    if cat == "snow" { return "Snow" }
-    if cat == "fog" { return "Fog" }
-    if cat == "cloudy" { return "Overcast" }
-    return "Partly Cloudy"
-}
+// QW cond 文案：T-02 probe 实证三端点支持 lang 参数（current/hourly/daily
+// 加 &lang= 后 text 随语言返回），直取 API 本地化 text，无需本地英文表。
 
 fn aq_level_en(zh str) str {
     if zh == "优" { return "Good" }
@@ -496,7 +488,7 @@ fn hh_label8(iso str) str {
 
 // 实况段覆盖（QW /weather/v1/current/{lat}/{lon}）
 fn qw_current(out ReportOut, lat str, lon str, ut str, uw str, lang str) {
-    let url str = "https://" + qw_host() + "/weather/v1/current/" + lat + "/" + lon + "?key=" + qw_key()
+    let url str = "https://" + qw_host() + "/weather/v1/current/" + lat + "/" + lon + "?key=" + qw_key() + "&lang=" + lang
     let raw str = get_text(url)
     if raw == "" {
         return
@@ -508,12 +500,9 @@ fn qw_current(out ReportOut, lat str, lon str, ut str, uw str, lang str) {
     // 根即数据（无包裹层）；缺失字段点访问得 nil → 算术抛 → 段级 catch 保 OM
     let code int = (str.to_uint("" + v.condition.code)) as int
     out.condition = qw_condition(code)
-    if lang == "en" {
-        // QW API text 恒中文；en 走类别英文表（probe ?lang= 不支持为实证假设）
-        out.cond_zh = cond_en_for(out.condition)
-    } else {
-        out.cond_zh = "" + v.condition.text
-    }
+    // T-02 probe 实证：QW 三端点均支持 lang 参数（lang=en → "Sunny"），
+    // cond 直接用 API 本地化 text
+    out.cond_zh = "" + v.condition.text
     out.icon = icon_for(out.condition)
     let tc float = v.temperature.value
     let fl float = v.feelsLike.value
@@ -535,7 +524,7 @@ fn qw_current(out ReportOut, lat str, lon str, ut str, uw str, lang str) {
     let vi float = v.visibility.value
     out.visibility = fmt_i(vi / 1000.0) + " km"
     let uvf float = v.uvIndex
-    out.uv = uv_level(uvf)
+    out.uv = uv_level(uvf, lang)
     let ot = v.obsTime
     if ot != nil {
         out.updated_at = mh_plus8("" + ot)
@@ -544,8 +533,8 @@ fn qw_current(out ReportOut, lat str, lon str, ut str, uw str, lang str) {
 }
 
 // 24h 小时段覆盖（QW /weather/v1/hourly；hours[].forecastTime 为 UTC）
-fn qw_hourly(out ReportOut, lat str, lon str, ut str) {
-    let url str = "https://" + qw_host() + "/weather/v1/hourly/" + lat + "/" + lon + "?key=" + qw_key()
+fn qw_hourly(out ReportOut, lat str, lon str, ut str, lang str) {
+    let url str = "https://" + qw_host() + "/weather/v1/hourly/" + lat + "/" + lon + "?key=" + qw_key() + "&lang=" + lang
     let raw str = get_text(url)
     if raw == "" {
         return
@@ -565,7 +554,7 @@ fn qw_hourly(out ReportOut, lat str, lon str, ut str) {
             n = n + 1
             continue
         }
-        var lb str = "现在"
+        var lb str = L("现在", "Now", lang)
         if n != 0 {
             lb = hh_label8("" + h.forecastTime)
         }
@@ -587,7 +576,7 @@ fn qw_hourly(out ReportOut, lat str, lon str, ut str) {
 
 // 5 日段覆盖（QW /weather/v1/daily；UTC 日界 = 北京 08:00，星期按 +8 后日期）
 fn qw_daily(out ReportOut, lat str, lon str, ut str, lang str) {
-    let url str = "https://" + qw_host() + "/weather/v1/daily/" + lat + "/" + lon + "?key=" + qw_key()
+    let url str = "https://" + qw_host() + "/weather/v1/daily/" + lat + "/" + lon + "?key=" + qw_key() + "&lang=" + lang
     let raw str = get_text(url)
     if raw == "" {
         return
@@ -609,16 +598,14 @@ fn qw_daily(out ReportOut, lat str, lon str, ut str, lang str) {
         }
         var lb str = weekday8("" + d.forecastStartTime, lang)
         if n == 0 {
-            lb = "今天"
+            lb = L("今天", "Today", lang)
         }
         let hc int = (str.to_uint("" + d.daytime.condition.code)) as int
         let cat str = qw_condition(hc)
         let tmax float = d.temperatureMax
         let tmin float = d.temperatureMin
+        // probe 实证 lang 直达 API；text 已随 lang 本地化
         var czh str = "" + d.daytime.condition.text
-        if lang == "en" {
-            czh = cond_en_for(cat)
-        }
         pts.push(DayPoint {
             day: lb,
             icon: icon_for(cat),
@@ -723,7 +710,7 @@ fn qw_overlay(out ReportOut, lat str, lon str, ut str, uw str, lang str) {
     } catch {
     }
     try {
-        qw_hourly(out, lat, lon, ut)
+        qw_hourly(out, lat, lon, ut, lang)
     } catch {
     }
     try {
@@ -1256,6 +1243,11 @@ fn impl_report_ll(lat str, lon str, ut str, uw str, lang str) ReportOut {
         alert_level: "",
         alert_title: "",
         alert_text: ""
+    }
+    // PLAN-007：mock 兜底默认文案按 lang 覆盖（en 默认集；失败时前端可见）
+    if lang == "en" {
+        out.cond_zh = "Partly Cloudy"
+        out.uv = "Moderate"
     }
     // PLAN-002：指数推导用原始值——块级 let 不跨 try 块，函数级 var 提升
     var temp_f float = 0.0
