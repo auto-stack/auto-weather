@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-008
-status: executing
+status: execution_done
 feature_name: 交互补全（滚动/高亮/详情浮层/设置卡语义/加载态）
 author: [agent]
 created_at: 2026-10-05T01:00:00Z
 updated_at: 2026-10-05T01:00:00Z
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 6
 supersedes_spec_components: []
 new_spec_components: [docs/specs/weather-app.md#F-P1-06]
@@ -112,18 +112,37 @@ AutoLang .at widget/VM merged、vm_smoke MCP（autoui_screenshot 备用）。
 
 ## 8. 执行步骤
 
-- [ ] T-01 横屏 scroll-y 包裹（AC-01）
-- [ ] T-02 custom pill 高亮（AC-02）
-- [ ] T-03 详情浮层（卡 onclick + 遮罩 + det_* model/handler）（AC-03）
-- [ ] T-04 设置卡 ✕/完成 + booting 注记（AC-04）
-- [ ] T-05 tests：T14 + 全量回归（AC-05）
-- [ ] T-06 docs：SD-01/02（AC-06）
+- [x] T-01 横屏 scroll-y 包裹（AC-01）
+  - 验证：T1/T9 地标全绿；注意 scroll h-full 会吃掉后续内联空间（详情面板
+    因此上移共享区——见 A2）
+- [x] T-02 custom pill 高亮（AC-02）
+  - 验证：T14 状态链路 + 样式条件在码
+- [x] T-03 详情面板（日卡"详情"按钮 + det_* model/handler）（AC-03）
+  - 验证：T14 ①开合；调整 A1：col onclick 不派发（实证）→ 卡内按钮方案；
+    VM 无 absolute 遮罩 → 内联面板（共享顶部区，与设置卡同构）
+- [x] T-04 设置卡 ✕/完成 + booting 注记（AC-04）
+  - 验证：T14 ②③；调整 A2：scroll h-full 致尾部内联元素不可点
+    （press 落 aura_0）→ 面板移位共享顶部区
+- [x] T-05 tests：T14 + 全量回归（AC-05）
+  - 验证：46/46 ×2（w8-smokeB/C）；调整 A3：条件块按钮 aura 映射偶发
+    延迟 → 关键按钮唯一文案（"关闭详情"）+ 点击重试；A4：T8③ 字幕断言
+    偶发时序 flaky——观察两轮，重试机制覆盖
+- [x] T-06 docs：SD-01/02（AC-06）
+  - 验证：commit 8c810c8 文件核查
 
 依赖：T-01..T-04 并行度高；T-05/06 最后。
 
 ## 9. 复审记录
 
 - `stage: new | PLAN-008 | rev 1 | outcome: pass | next: work`——授权内。
+- `stage: work | PLAN-008 | rev 1 | outcome: pass | code_commit: 8c810c8
+  (on plan-008-dev, base 95321d7) | task_ids: T-01..T-06 | evidence:
+  worktree vm_smoke 46/46 ×2（w8-smokeB/C）| blockers: 无 | next: review`。
+- **实施调整记录**：A1 col onclick 不派发（按钮方案替代）；A2 scroll
+  h-full 挤压尾部内联元素（press 落 aura_0 实证，面板上移共享顶部区）；
+  A3 条件块按钮 aura 映射偶发延迟（唯一 label + 重试）；A4 T8③ flaky
+  观察项（搜索时序）。测试纪律沉淀：快照元素定位一律
+  find_smallest_clickable 优先 + 关键交互按钮唯一文案。
 
 ## 10. 待澄清事项
 
