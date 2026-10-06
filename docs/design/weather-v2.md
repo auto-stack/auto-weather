@@ -64,11 +64,18 @@ CityListOut{ ok, error, ids: []str, names: []str, lats: []str, lons: []str }
 - 坐标传递一律 **2 位小数字符串**（`"39.90"`）：避免 float→str 转换面缺失，
   由 `fmt_latlon()`（全整数运算：`(f+100)*100` 移位取整再拆解）产出。
 - 城市 id = `lat_lon`（如 `39.90_116.40`），确定性且天然去重。
+- **cities.json 是唯一有序城市表**（PLAN-009）：位置 0 = 主城市（pill ★）；
+  文件缺失/损坏时读路径合成北京种子，首次写落盘；`{"cities":[]}` 空表
+  （用户删光）是合法持久态；10 内置城表下线（`coords_for` 仅为遗留
+  `weather_report` 端点保留，前端统一走 `report_at`）。
 
 ## 5. 持久化
 
-`Env.local_data_dir()/auto-weather/cities.json`。后端读-改-写，写前
-`quote_json` 转义（os-config 配方）；前端不碰文件。删除城市 = 重写文件。
+`Env.local_data_dir()/auto-weather/cities.json`（唯一有序城市表，位置 0 =
+主城市；缺失读路径合成北京种子）。settings.json 5 字段：temp_unit/
+wind_unit/lang/startup(main|last)/last_id。后端读-改-写，写前
+`quote_json` 转义（os-config 配方）；前端不碰文件。删除城市 = 重写文件；
+每次用户选中城市同步 last_id 落盘（Init 启动选路不落盘）。
 
 ## 6. 已实证 VM 配方约束（2026-10-04，违反即回归）
 
