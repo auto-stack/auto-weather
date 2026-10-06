@@ -27,6 +27,13 @@
 style hint_text = "text-[10px] text-muted-foreground"
 // r9：a2r 不把 `use weather_data: fn` 内联进 main.rs（E0425）。函数同文件
 // 放在 widget 之后；城市选择用中文名字符串键，避免 Obj id 被推成 i62。
+//
+// PLAN-009：城市模型收敛——单一有序城市表（后端 cities.json 持久化，
+// 位置 0 = 主城市带 ★），选中态统一 cur_id/cur_name/cur_lat/cur_lon，
+// 取数统一 weather_report_at 坐标通道；启动偏好 startup(main/last) +
+// last_id 选中记忆随 settings 5 字段落盘；内置 10 城 pill 展开与
+// t_city_* ×10 删除。共享 fn 经 a2r 不进 main.rs（r9），重灌/选中记忆
+// 逻辑在各 handler 内联等价展开（注释标 pick_city/reload 语义）。
 
 style page = "w-full h-full bg-background text-foreground"
 style app_frame = "w-full bg-card border border-border rounded-2xl p-4 gap-4 shadow-lg"
@@ -57,7 +64,7 @@ style aqi_mid = "text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-prima
 // r.ok=false，全场保留下方演示样本（渐进降级，与 027-file-manager 同构）。
 // PLAN-001：城市搜索/自定义城市/任意坐标报文（平行 str 数组 + 索引循环
 // 物化——os-config VG12-14 终版 API 形状规则）。
-use back.api: weather_report, weather_search, cities_get, cities_add, cities_remove, weather_report_at, settings_get, settings_set, cities_move
+use back.api: weather_search, cities_get, cities_add, cities_remove, weather_report_at, settings_get, settings_set, cities_move
 
 // PLAN-007 i18n：lang 贯穿取数链；界面文案全量 t_* 变量化（见 model）
 
@@ -70,12 +77,12 @@ widget App {
         SetAccent(str),
         SetLayout(str),
         SetForecastTab(str),
-        RemoveCustom(str),
+        RemoveCity(str),
         ToggleSettings,
         SetTempUnit(str),
         SetWindUnit(str),
-        CycleDefaultCity,
-        MoveCustom(str, str),
+        CycleStartup,
+        MoveCity(str, str),
         SetLang(str),
         Init
     }
@@ -88,8 +95,16 @@ widget App {
         // 预报区 Tab：hourly | daily（默认窗口不高，二者互斥显示）
         var forecast_tab str = "hourly"
 
-        var city_id str = "beijing"
-        var city_zh str = "北京"
+        // PLAN-009：当前城市（取数唯一依据；全表统一走 weather_report_at
+        // 坐标通道；cur_name 同时供 header 绑定，不随语言切换）
+        var cur_id str = ""
+        var cur_name str = "北京"
+        var cur_lat str = "39.90"
+        var cur_lon str = "116.40"
+        // PLAN-009：主城市 = 列表首位 id（重灌时镜像；★ 判定依据）
+        var main_id str = ""
+        // PLAN-009：空表门控（删光城市 → 空态 hint、跳取数）
+        var cities_empty bool = false
         var condition str = "partly"
         var cond_zh str = "多云"
         var icon str = "⛅"
@@ -106,8 +121,8 @@ widget App {
         // r10：数据来源注记（实时成功 → Open-Meteo；失败保演示文案）
         var data_note str = "演示数据 · 非实时气象"
         var source_label str = "演示样本"
-        // PLAN-001：搜索/自定义城市——平行 str 数组（handler 索引循环
-        // 物化）+ 视图态 map 列表（view 端 for 渲染，VG4 view 侧可用）
+        // PLAN-001/009：搜索 + 唯一有序城市表——平行 str 数组（handler
+        // 索引循环物化）+ 视图态 map 列表（view 端 for 渲染，VG4）
         var search_q str = ""
         var search_err str = ""
         var search_ids = []
@@ -116,11 +131,12 @@ widget App {
         var search_lats = []
         var search_lons = []
         var search_hits = []
-        var custom_ids = []
-        var custom_names = []
-        var custom_lats = []
-        var custom_lons = []
-        var custom_pills = []
+        var city_ids = []
+        var city_names = []
+        var city_lats = []
+        var city_lons = []
+        // 元素 {id, disp}；disp 重灌时预拼（首位 "★ "+name 主城市徽记）
+        var cities_pills = []
         // PLAN-002：空气组分 + 生活指数
         var pm25 str = "—"
         var pm10 str = "—"
@@ -131,14 +147,15 @@ widget App {
         var alert_level str = ""
         var alert_title str = ""
         var alert_text str = ""
-        // PLAN-004：当前选中的自定义城市（""=内置城市；Refresh 据此分流）
-        var active_custom str = ""
         // PLAN-006：设置中心
         var s_temp_unit str = "c"
         var s_wind_unit str = "kmh"
-        var s_default_city str = "beijing"
-        // 带前缀的按钮 label（唯一可定位；视图 paren-expr 受限，handler 预拼）
-        var s_default_label str = "默认:beijing"
+        // PLAN-009：启动偏好（main=主城市 / last=上次选中；设置卡互切）
+        var s_startup str = "main"
+        // PLAN-009：最近一次选中城市 id（pick_city 语义落盘；启动选路依据）
+        var s_last_id str = ""
+        // 启动偏好按钮 label（唯一可定位；视图 paren-expr 受限，handler 预拼）
+        var s_startup_label str = "启动:主城市"
         var settings_open bool = false
         // PLAN-007：界面语言（zh/en；label 变量化后全面生效）
         var lang str = "zh"
@@ -155,8 +172,6 @@ widget App {
         var t_settings str = "设置"
         var t_temp_unit str = "温度单位"
         var t_wind_unit str = "风速单位"
-        var t_default_city str = "默认城市"
-        var t_default_pre str = "默认:"
         var t_tab_hourly str = "24小时"
         var t_tab_daily str = "5日"
         var t_details str = "当前详情"
@@ -175,16 +190,11 @@ widget App {
         var t_now str = "现在"
         var t_today str = "今天"
         var t_lang_label str = "语言"
-        var t_city_beijing str = "北京"
-        var t_city_shanghai str = "上海"
-        var t_city_guangzhou str = "广州"
-        var t_city_shenzhen str = "深圳"
-        var t_city_hangzhou str = "杭州"
-        var t_city_chengdu str = "成都"
-        var t_city_xian str = "西安"
-        var t_city_wuhan str = "武汉"
-        var t_city_harbin str = "哈尔滨"
-        var t_city_sanya str = "三亚"
+        // PLAN-009：空态 hint + 启动偏好按钮文案（城市名不再随语言翻译——
+        // 统一取后端持久化名；主城市 ★ 徽记由重灌预拼进 disp）
+        var t_cities_empty str = "搜索添加城市"
+        var t_startup_main str = "启动:主城市"
+        var t_startup_last str = "启动:上次选中"
         var t_data_note_demo str = "演示数据 · 非实时气象"
         var t_source_demo str = "演示样本"
         var t_live_pre str = "实时数据 · "
@@ -232,41 +242,8 @@ widget App {
                     style: "w-full items-center gap-3"
                     col {
                         style: "gap-0.5 min-w-0"
-                        // PLAN-007：城市名随语言——内置城绑 t_city_*（与 pill
-                        // 同源），自定义城（city_id==""）用取数名
-                        if .city_id == "beijing" {
-                            text .t_city_beijing { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
-                        }
-                        if .city_id == "shanghai" {
-                            text .t_city_shanghai { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
-                        }
-                        if .city_id == "guangzhou" {
-                            text .t_city_guangzhou { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
-                        }
-                        if .city_id == "shenzhen" {
-                            text .t_city_shenzhen { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
-                        }
-                        if .city_id == "hangzhou" {
-                            text .t_city_hangzhou { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
-                        }
-                        if .city_id == "chengdu" {
-                            text .t_city_chengdu { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
-                        }
-                        if .city_id == "xian" {
-                            text .t_city_xian { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
-                        }
-                        if .city_id == "wuhan" {
-                            text .t_city_wuhan { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
-                        }
-                        if .city_id == "harbin" {
-                            text .t_city_harbin { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
-                        }
-                        if .city_id == "sanya" {
-                            text .t_city_sanya { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
-                        }
-                        if .city_id == "" {
-                            text .city_zh { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
-                        }
+                        // PLAN-009：城市名统一绑 cur_name（后端持久化名）
+                        text .cur_name { style: "text-2xl lg:text-3xl font-bold text-foreground tracking-tight" }
                         if .lang == "en" {
                             text f"Updated ${.updated_at}" { style: hint_text }
                         } else {
@@ -327,62 +304,19 @@ widget App {
                     scroll (axis: "x", style: "w-full h-full") {
                         row {
                             style: "items-center gap-2 h-full pr-2"
-                            // a2r：[]str for 循环元素类型为 Value，与 String 比较失败；
-                            // 城市按钮全部展开，避免 for + 列表元素。
-                            if .city_id == "beijing" {
-                                button .t_city_beijing { onclick: .SelectCity("beijing"), variant: "primary", style: city_pill_on }
-                            } else {
-                                button .t_city_beijing { onclick: .SelectCity("beijing"), variant: "secondary", style: city_pill_off }
+                            // PLAN-009：空表 hint（删光城市 → 引导搜索添加）
+                            if .cities_empty {
+                                text .t_cities_empty { style: hint_text }
                             }
-                            if .city_id == "shanghai" {
-                                button .t_city_shanghai { onclick: .SelectCity("shanghai"), variant: "primary", style: city_pill_on }
-                            } else {
-                                button .t_city_shanghai { onclick: .SelectCity("shanghai"), variant: "secondary", style: city_pill_off }
-                            }
-                            if .city_id == "guangzhou" {
-                                button .t_city_guangzhou { onclick: .SelectCity("guangzhou"), variant: "primary", style: city_pill_on }
-                            } else {
-                                button .t_city_guangzhou { onclick: .SelectCity("guangzhou"), variant: "secondary", style: city_pill_off }
-                            }
-                            if .city_id == "shenzhen" {
-                                button .t_city_shenzhen { onclick: .SelectCity("shenzhen"), variant: "primary", style: city_pill_on }
-                            } else {
-                                button .t_city_shenzhen { onclick: .SelectCity("shenzhen"), variant: "secondary", style: city_pill_off }
-                            }
-                            if .city_id == "hangzhou" {
-                                button .t_city_hangzhou { onclick: .SelectCity("hangzhou"), variant: "primary", style: city_pill_on }
-                            } else {
-                                button .t_city_hangzhou { onclick: .SelectCity("hangzhou"), variant: "secondary", style: city_pill_off }
-                            }
-                            if .city_id == "chengdu" {
-                                button .t_city_chengdu { onclick: .SelectCity("chengdu"), variant: "primary", style: city_pill_on }
-                            } else {
-                                button .t_city_chengdu { onclick: .SelectCity("chengdu"), variant: "secondary", style: city_pill_off }
-                            }
-                            if .city_id == "xian" {
-                                button .t_city_xian { onclick: .SelectCity("xian"), variant: "primary", style: city_pill_on }
-                            } else {
-                                button .t_city_xian { onclick: .SelectCity("xian"), variant: "secondary", style: city_pill_off }
-                            }
-                            if .city_id == "wuhan" {
-                                button .t_city_wuhan { onclick: .SelectCity("wuhan"), variant: "primary", style: city_pill_on }
-                            } else {
-                                button .t_city_wuhan { onclick: .SelectCity("wuhan"), variant: "secondary", style: city_pill_off }
-                            }
-                            if .city_id == "harbin" {
-                                button .t_city_harbin { onclick: .SelectCity("harbin"), variant: "primary", style: city_pill_on }
-                            } else {
-                                button .t_city_harbin { onclick: .SelectCity("harbin"), variant: "secondary", style: city_pill_off }
-                            }
-                            if .city_id == "sanya" {
-                                button .t_city_sanya { onclick: .SelectCity("sanya"), variant: "primary", style: city_pill_on }
-                            } else {
-                                button .t_city_sanya { onclick: .SelectCity("sanya"), variant: "secondary", style: city_pill_off }
-                            }
-                            // PLAN-001：自定义城市 pill（动态 for 渲染）
-                            for c in .custom_pills {
-                                button c.name { onclick: .SelectCustom(c.id), variant: "secondary", style: city_pill_off }
-                                button "✕" { onclick: .RemoveCustom(c.id), variant: "secondary", style: "w-6 h-6 text-[10px] items-center justify-center rounded-full bg-secondary text-muted-foreground hover:bg-secondary/80 transition-colors shrink-0" }
+                            // PLAN-009：唯一有序城市表 for 渲染（disp 重灌预拼：
+                            // 首位带 ★ 主城市徽记）；选中高亮 = 双节点条件样式
+                            for c in .cities_pills {
+                                if c.id == .cur_id {
+                                    button c.disp { onclick: .SelectCity(c.id), variant: "primary", style: city_pill_on }
+                                } else {
+                                    button c.disp { onclick: .SelectCity(c.id), variant: "secondary", style: city_pill_off }
+                                }
+                                button "✕" { onclick: .RemoveCity(c.id), variant: "secondary", style: "w-6 h-6 text-[10px] items-center justify-center rounded-full bg-secondary text-muted-foreground hover:bg-secondary/80 transition-colors shrink-0" }
                             }
                         }
                     }
@@ -421,10 +355,10 @@ widget App {
                                 button "m/s" { onclick: .SetWindUnit("ms"), variant: "secondary", style: fc_tab_off }
                             }
                         }
+                        // PLAN-009：启动偏好行（main=主城市 / last=上次选中；互切落盘）
                         row {
                             style: "w-full items-center gap-2"
-                            text .t_default_city { style: "text-xs text-muted-foreground w-16 shrink-0" }
-                            button .s_default_label { onclick: .CycleDefaultCity, variant: "secondary", style: fc_tab_off }
+                            button .s_startup_label { onclick: .CycleStartup, variant: "secondary", style: fc_tab_off }
                         }
                         // PLAN-007：语言切换（zh/en；按钮文案保持自语言固定）
                         row {
@@ -441,14 +375,14 @@ widget App {
                                 button "English" { onclick: .SetLang("en"), variant: "secondary", style: fc_tab_off }
                             }
                         }
-                        // 城市管理：排序（↑↓）+ 删除（✕）
-                        for c in .custom_pills {
+                        // 城市管理：排序（↑↓）+ 删除（✕）；★ 行为主城市
+                        for c in .cities_pills {
                             row {
                                 style: "w-full items-center gap-2"
-                                button c.name { onclick: .SelectCustom(c.id), variant: "secondary", style: "flex-1 justify-start px-3 py-1.5 text-xs rounded-full" }
-                                button "↑" { onclick: .MoveCustom(c.id, "up"), variant: "secondary", style: icon_btn }
-                                button "↓" { onclick: .MoveCustom(c.id, "down"), variant: "secondary", style: icon_btn }
-                                button "✕" { onclick: .RemoveCustom(c.id), variant: "secondary", style: icon_btn }
+                                button c.disp { onclick: .SelectCity(c.id), variant: "secondary", style: "flex-1 justify-start px-3 py-1.5 text-xs rounded-full" }
+                                button "↑" { onclick: .MoveCity(c.id, "up"), variant: "secondary", style: icon_btn }
+                                button "↓" { onclick: .MoveCity(c.id, "down"), variant: "secondary", style: icon_btn }
+                                button "✕" { onclick: .RemoveCity(c.id), variant: "secondary", style: icon_btn }
                             }
                         }
                     }
@@ -975,17 +909,19 @@ widget App {
 
     on {
         // r9：a2r 不发射 app.at 顶层 fn 进 main.rs（E0425），handler 一律
-        // 字面量 if/else 赋值，不调用 helper。键=中文城市名。
+        // 字面量 if/else 赋值，不调用 helper（PLAN-009 的 pick_city/reload
+        // 语义在各 handler 内联等价展开）。
         .Init -> {
             .layout_mode = "landscape"
             .forecast_tab = "hourly"
-            // PLAN-006：先取设置（单位/默认城市），失败保默认
+            // PLAN-009：先取设置（5 字段单位/语言/启动偏好/选中记忆），失败保默认
             let rs = settings_get()
             if rs.ok {
                 .s_temp_unit = rs.temp_unit
                 .s_wind_unit = rs.wind_unit
-                .s_default_city = rs.default_city
                 .lang = rs.lang
+                .s_startup = rs.startup
+                .s_last_id = rs.last_id
             }
             // PLAN-007：持久化 lang=en → t_* 全量切英（zh 侧保持模型默认，
             // 无需 else 块）
@@ -999,8 +935,6 @@ widget App {
                 .t_settings = "Settings"
                 .t_temp_unit = "Temp unit"
                 .t_wind_unit = "Wind unit"
-                .t_default_city = "Default city"
-                .t_default_pre = "Default: "
                 .t_tab_hourly = "24H"
                 .t_tab_daily = "5-Day"
                 .t_details = "Details"
@@ -1019,42 +953,19 @@ widget App {
                 .t_now = "Now"
                 .t_today = "Today"
                 .t_lang_label = "Language"
-                .t_city_beijing = "Beijing"
-                .t_city_shanghai = "Shanghai"
-                .t_city_guangzhou = "Guangzhou"
-                .t_city_shenzhen = "Shenzhen"
-                .t_city_hangzhou = "Hangzhou"
-                .t_city_chengdu = "Chengdu"
-                .t_city_xian = "Xi'an"
-                .t_city_wuhan = "Wuhan"
-                .t_city_harbin = "Harbin"
-                .t_city_sanya = "Sanya"
+                .t_cities_empty = "Search to add a city"
+                .t_startup_main = "Startup: Main city"
+                .t_startup_last = "Startup: Last selected"
                 .t_data_note_demo = "Demo data · Not live weather"
                 .t_source_demo = "Demo data"
                 .t_live_pre = "Live · "
                 .t_search_empty = "No results (or network unavailable)"
             }
-            .s_default_label = .t_default_pre + .s_default_city
-            .city_id = .s_default_city
-            .city_zh = "北京"
-            if .s_default_city == "shanghai" {
-                .city_zh = "上海"
-            } else if .s_default_city == "guangzhou" {
-                .city_zh = "广州"
-            } else if .s_default_city == "shenzhen" {
-                .city_zh = "深圳"
-            } else if .s_default_city == "hangzhou" {
-                .city_zh = "杭州"
-            } else if .s_default_city == "chengdu" {
-                .city_zh = "成都"
-            } else if .s_default_city == "xian" {
-                .city_zh = "西安"
-            } else if .s_default_city == "wuhan" {
-                .city_zh = "武汉"
-            } else if .s_default_city == "harbin" {
-                .city_zh = "哈尔滨"
-            } else if .s_default_city == "sanya" {
-                .city_zh = "三亚"
+            // PLAN-009：启动偏好按钮 label 预拼（随语言）
+            if .s_startup == "last" {
+                .s_startup_label = .t_startup_last
+            } else {
+                .s_startup_label = .t_startup_main
             }
             .condition = "partly"
             .cond_zh = "多云"
@@ -1086,52 +997,84 @@ widget App {
                 { day: "周五", icon: "⛅", cond: "多云", tmin: "19°", tmax: "27°" }
             ]
             .updated_at = "14:30"
-            // r10：起屏拉一次真实数据；失败静默保留上方演示样本
-            let r = weather_report(.city_id, .s_temp_unit, .s_wind_unit, .lang)
-            if r.ok {
-                .live = true
-                .condition = r.condition
-                .cond_zh = r.cond_zh
-                .icon = r.icon
-                .temp = r.temp
-                .feels = r.feels
-                .humidity = r.humidity
-                .wind = r.wind
-                .uv = r.uv
-                .aqi = r.aqi
-                .aqi_level = r.aqi_level
-                .pressure = r.pressure
-                .visibility = r.visibility
-                .updated_at = r.updated_at
-                .hourly = r.hourly
-                .daily = r.daily
-                .data_note = .t_live_pre + r.source
-                .source_label = r.source
-                .pm25 = r.pm25
-                .pm10 = r.pm10
-                .o3 = r.o3
-                .indices = r.indices
-                .precip = r.precip
-                .alert_level = r.alert_level
-                .alert_title = r.alert_title
-                .alert_text = r.alert_text
-            }
-            if !r.ok {
-                // 演示态：注记随语言（live=false，切语言时同样重刷）
-                .data_note = .t_data_note_demo
-                .source_label = .t_source_demo
-            }
-            // PLAN-001：预填自定义城市（后端持久化；失败静默）
+            // PLAN-009：唯一有序城市表（后端持久化；读路径缺文件合成北京种子；
+            // 空表=删光，合法持久态）。物化平行数组 + pill 列表（disp 预拼：
+            // 首位带 ★ 主城市徽记）。失败按空表处理（空态 hint、跳取数）
             let rc = cities_get()
             if rc.ok {
                 var k int = 0
                 for x in rc.ids {
-                    .custom_ids.push(rc.ids.get(k))
-                    .custom_names.push(rc.names.get(k))
-                    .custom_lats.push(rc.lats.get(k))
-                    .custom_lons.push(rc.lons.get(k))
-                    .custom_pills.push({ id: rc.ids.get(k), name: rc.names.get(k) })
+                    .city_ids.push(rc.ids.get(k))
+                    .city_names.push(rc.names.get(k))
+                    .city_lats.push(rc.lats.get(k))
+                    .city_lons.push(rc.lons.get(k))
+                    if k == 0 {
+                        .cities_pills.push({ id: rc.ids.get(k), disp: "★ " + rc.names.get(k) })
+                    } else {
+                        .cities_pills.push({ id: rc.ids.get(k), disp: rc.names.get(k) })
+                    }
                     k = k + 1
+                }
+            }
+            if .city_ids.len() == 0 {
+                // 空表：空态 hint、跳取数（保演示样本 + demo 注记，不闪错）
+                .cities_empty = true
+                .main_id = ""
+                .data_note = .t_data_note_demo
+                .source_label = .t_source_demo
+            } else {
+                .cities_empty = false
+                .main_id = .city_ids.get(0)
+                // 选启动城市：startup=last 且 last_id 在表 → 该城；否则首位。
+                // 启动选路不走 pick_city、不落盘（避免每次启动写文件）
+                var pick int = 0
+                if .s_startup == "last" {
+                    var s int = 0
+                    while s < .city_ids.len() {
+                        if .city_ids.get(s) == .s_last_id {
+                            pick = s
+                        }
+                        s = s + 1
+                    }
+                }
+                .cur_id = .city_ids.get(pick)
+                .cur_name = .city_names.get(pick)
+                .cur_lat = .city_lats.get(pick)
+                .cur_lon = .city_lons.get(pick)
+                // r10：起屏拉一次真实数据；失败静默保留上方演示样本
+                let r = weather_report_at(.cur_lat, .cur_lon, .s_temp_unit, .s_wind_unit, .lang)
+                if r.ok {
+                    .live = true
+                    .condition = r.condition
+                    .cond_zh = r.cond_zh
+                    .icon = r.icon
+                    .temp = r.temp
+                    .feels = r.feels
+                    .humidity = r.humidity
+                    .wind = r.wind
+                    .uv = r.uv
+                    .aqi = r.aqi
+                    .aqi_level = r.aqi_level
+                    .pressure = r.pressure
+                    .visibility = r.visibility
+                    .updated_at = r.updated_at
+                    .hourly = r.hourly
+                    .daily = r.daily
+                    .data_note = .t_live_pre + r.source
+                    .source_label = r.source
+                    .pm25 = r.pm25
+                    .pm10 = r.pm10
+                    .o3 = r.o3
+                    .indices = r.indices
+                    .precip = r.precip
+                    .alert_level = r.alert_level
+                    .alert_title = r.alert_title
+                    .alert_text = r.alert_text
+                }
+                if !r.ok {
+                    // 演示态：注记随语言（live=false，切语言时同样重刷）
+                    .data_note = .t_data_note_demo
+                    .source_label = .t_source_demo
                 }
             }
         }
@@ -1168,8 +1111,9 @@ widget App {
             }
         }
 
-        // PLAN-001：添加搜索结果为自定义城市（索引循环定位，handler 不读
-        // 循环变量 map——VG4；cities_add 返回新表即刷新 pills）
+        // PLAN-001/009：添加搜索结果进唯一有序表（索引循环定位，handler
+        // 不读循环变量 map——VG4；cities_add 返回新表即重灌）。此前空表
+        // → pick_city(0) 语义：自动选中首城 + last_id 记忆落盘 + 取数
         .AddHit(id) -> {
             .search_err = ""
             var i int = 0
@@ -1187,49 +1131,107 @@ widget App {
                 i = i + 1
             }
             if found {
+                var was_empty bool = false
+                if .city_ids.len() == 0 {
+                    was_empty = true
+                }
                 let r2 = cities_add(id, nm, la, lo)
                 if r2.ok {
-                    .custom_ids = []
-                    .custom_names = []
-                    .custom_lats = []
-                    .custom_lons = []
-                    .custom_pills = []
+                    .city_ids = []
+                    .city_names = []
+                    .city_lats = []
+                    .city_lons = []
+                    .cities_pills = []
                     var j int = 0
                     for x in r2.ids {
-                        .custom_ids.push(r2.ids.get(j))
-                        .custom_names.push(r2.names.get(j))
-                        .custom_lats.push(r2.lats.get(j))
-                        .custom_lons.push(r2.lons.get(j))
-                        .custom_pills.push({ id: r2.ids.get(j), name: r2.names.get(j) })
+                        .city_ids.push(r2.ids.get(j))
+                        .city_names.push(r2.names.get(j))
+                        .city_lats.push(r2.lats.get(j))
+                        .city_lons.push(r2.lons.get(j))
+                        if j == 0 {
+                            .cities_pills.push({ id: r2.ids.get(j), disp: "★ " + r2.names.get(j) })
+                        } else {
+                            .cities_pills.push({ id: r2.ids.get(j), disp: r2.names.get(j) })
+                        }
                         j = j + 1
+                    }
+                    if .city_ids.len() == 0 {
+                        .cities_empty = true
+                        .main_id = ""
+                    } else {
+                        .cities_empty = false
+                        .main_id = .city_ids.get(0)
                     }
                     .search_hits = []
                     .search_q = ""
+                    if was_empty {
+                        // pick_city(0)：cur_* + last_id 记忆 + settings 落盘
+                        .cur_id = .city_ids.get(0)
+                        .cur_name = .city_names.get(0)
+                        .cur_lat = .city_lats.get(0)
+                        .cur_lon = .city_lons.get(0)
+                        .s_last_id = .city_ids.get(0)
+                        settings_set(.s_temp_unit, .s_wind_unit, .lang, .s_startup, .s_last_id)
+                        let r = weather_report_at(.cur_lat, .cur_lon, .s_temp_unit, .s_wind_unit, .lang)
+                        if r.ok {
+                            .live = true
+                            .condition = r.condition
+                            .cond_zh = r.cond_zh
+                            .icon = r.icon
+                            .temp = r.temp
+                            .feels = r.feels
+                            .humidity = r.humidity
+                            .wind = r.wind
+                            .uv = r.uv
+                            .aqi = r.aqi
+                            .aqi_level = r.aqi_level
+                            .pressure = r.pressure
+                            .visibility = r.visibility
+                            .updated_at = r.updated_at
+                            .hourly = r.hourly
+                            .daily = r.daily
+                            .data_note = .t_live_pre + r.source
+                            .source_label = r.source
+                            .pm25 = r.pm25
+                            .pm10 = r.pm10
+                            .o3 = r.o3
+                            .indices = r.indices
+                            .precip = r.precip
+                            .alert_level = r.alert_level
+                            .alert_title = r.alert_title
+                            .alert_text = r.alert_text
+                        }
+                    }
                 }
             }
         }
 
-        // PLAN-001：选中自定义城市——report_at 取数
-        .SelectCustom(id) -> {
-            .city_id = ""
-            .active_custom = id
+        // PLAN-009：选中城市（list 内任一 pill / 设置卡城市行共用）——
+        // 索引循环定位 → pick_city 语义：存 cur_*（含坐标）+ s_last_id
+        // 记忆 + settings_set 5 参落盘 → report_at 取数（失败保留现状）
+        .SelectCity(id) -> {
             .search_err = ""
             var i int = 0
             var found bool = false
             var nm str = ""
             var la str = ""
             var lo str = ""
-            while i < .custom_ids.len() {
-                if .custom_ids.get(i) == id {
+            while i < .city_ids.len() {
+                if .city_ids.get(i) == id {
                     found = true
-                    nm = .custom_names.get(i)
-                    la = .custom_lats.get(i)
-                    lo = .custom_lons.get(i)
+                    nm = .city_names.get(i)
+                    la = .city_lats.get(i)
+                    lo = .city_lons.get(i)
                 }
                 i = i + 1
             }
             if found {
-                .city_zh = nm
+                .cur_id = id
+                .cur_name = nm
+                .cur_lat = la
+                .cur_lon = lo
+                .s_last_id = id
+                settings_set(.s_temp_unit, .s_wind_unit, .lang, .s_startup, .s_last_id)
                 let r = weather_report_at(la, lo, .s_temp_unit, .s_wind_unit, .lang)
                 if r.ok {
                     .live = true
@@ -1262,23 +1264,80 @@ widget App {
             }
         }
 
-        // PLAN-002：删除自定义城市（响应即新表，同 AddHit 物化模式）
-        .RemoveCustom(id) -> {
+        // PLAN-009：删除城市——remove → 重灌（★ 与 main_id 随重灌更新）；
+        // 删的是当前城市 → 空表则空态跳取数 + 清 last_id 落盘，非空则
+        // pick_city(0) 语义回落首城（记忆落盘 + 取数）；未选中不动
+        .RemoveCity(id) -> {
             let r3 = cities_remove(id)
             if r3.ok {
-                .custom_ids = []
-                .custom_names = []
-                .custom_lats = []
-                .custom_lons = []
-                .custom_pills = []
+                var was_cur bool = false
+                if .cur_id == id {
+                    was_cur = true
+                }
+                .city_ids = []
+                .city_names = []
+                .city_lats = []
+                .city_lons = []
+                .cities_pills = []
                 var j int = 0
                 for x in r3.ids {
-                    .custom_ids.push(r3.ids.get(j))
-                    .custom_names.push(r3.names.get(j))
-                    .custom_lats.push(r3.lats.get(j))
-                    .custom_lons.push(r3.lons.get(j))
-                    .custom_pills.push({ id: r3.ids.get(j), name: r3.names.get(j) })
+                    .city_ids.push(r3.ids.get(j))
+                    .city_names.push(r3.names.get(j))
+                    .city_lats.push(r3.lats.get(j))
+                    .city_lons.push(r3.lons.get(j))
+                    if j == 0 {
+                        .cities_pills.push({ id: r3.ids.get(j), disp: "★ " + r3.names.get(j) })
+                    } else {
+                        .cities_pills.push({ id: r3.ids.get(j), disp: r3.names.get(j) })
+                    }
                     j = j + 1
+                }
+                if .city_ids.len() == 0 {
+                    .cities_empty = true
+                    .main_id = ""
+                    .s_last_id = ""
+                    settings_set(.s_temp_unit, .s_wind_unit, .lang, .s_startup, .s_last_id)
+                } else {
+                    .cities_empty = false
+                    .main_id = .city_ids.get(0)
+                    if was_cur {
+                        // pick_city(0)：回落首城 + 记忆 + 落盘 + 取数
+                        .cur_id = .city_ids.get(0)
+                        .cur_name = .city_names.get(0)
+                        .cur_lat = .city_lats.get(0)
+                        .cur_lon = .city_lons.get(0)
+                        .s_last_id = .city_ids.get(0)
+                        settings_set(.s_temp_unit, .s_wind_unit, .lang, .s_startup, .s_last_id)
+                        let r = weather_report_at(.cur_lat, .cur_lon, .s_temp_unit, .s_wind_unit, .lang)
+                        if r.ok {
+                            .live = true
+                            .condition = r.condition
+                            .cond_zh = r.cond_zh
+                            .icon = r.icon
+                            .temp = r.temp
+                            .feels = r.feels
+                            .humidity = r.humidity
+                            .wind = r.wind
+                            .uv = r.uv
+                            .aqi = r.aqi
+                            .aqi_level = r.aqi_level
+                            .pressure = r.pressure
+                            .visibility = r.visibility
+                            .updated_at = r.updated_at
+                            .hourly = r.hourly
+                            .daily = r.daily
+                            .data_note = .t_live_pre + r.source
+                            .source_label = r.source
+                            .pm25 = r.pm25
+                            .pm10 = r.pm10
+                            .o3 = r.o3
+                            .indices = r.indices
+                            .precip = r.precip
+                            .alert_level = r.alert_level
+                            .alert_title = r.alert_title
+                            .alert_text = r.alert_text
+                        }
+                    }
                 }
             }
         }
@@ -1290,38 +1349,24 @@ widget App {
 
         .SetTempUnit(u) -> {
             .s_temp_unit = u
-            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city, .lang)
+            settings_set(.s_temp_unit, .s_wind_unit, .lang, .s_startup, .s_last_id)
         }
 
         .SetWindUnit(u) -> {
             .s_wind_unit = u
-            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city, .lang)
+            settings_set(.s_temp_unit, .s_wind_unit, .lang, .s_startup, .s_last_id)
         }
 
-        .CycleDefaultCity -> {
-            var nxt str = "beijing"
-            if .s_default_city == "beijing" {
-                nxt = "shanghai"
-            } else if .s_default_city == "shanghai" {
-                nxt = "guangzhou"
-            } else if .s_default_city == "guangzhou" {
-                nxt = "shenzhen"
-            } else if .s_default_city == "shenzhen" {
-                nxt = "hangzhou"
-            } else if .s_default_city == "hangzhou" {
-                nxt = "chengdu"
-            } else if .s_default_city == "chengdu" {
-                nxt = "xian"
-            } else if .s_default_city == "xian" {
-                nxt = "wuhan"
-            } else if .s_default_city == "wuhan" {
-                nxt = "harbin"
-            } else if .s_default_city == "harbin" {
-                nxt = "sanya"
+        // PLAN-009：启动偏好互切（main↔last）→ 重拼 label → settings 落盘
+        .CycleStartup -> {
+            if .s_startup == "main" {
+                .s_startup = "last"
+                .s_startup_label = .t_startup_last
+            } else {
+                .s_startup = "main"
+                .s_startup_label = .t_startup_main
             }
-            .s_default_city = nxt
-            .s_default_label = .t_default_pre + nxt
-            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city, .lang)
+            settings_set(.s_temp_unit, .s_wind_unit, .lang, .s_startup, .s_last_id)
         }
 
         // PLAN-007：语言切换——t_* 全量赋值 + 持久化；数据面语言下次取数生效
@@ -1338,8 +1383,6 @@ widget App {
                 .t_settings = "Settings"
                 .t_temp_unit = "Temp unit"
                 .t_wind_unit = "Wind unit"
-                .t_default_city = "Default city"
-                .t_default_pre = "Default: "
                 .t_tab_hourly = "24H"
                 .t_tab_daily = "5-Day"
                 .t_details = "Details"
@@ -1358,16 +1401,9 @@ widget App {
                 .t_now = "Now"
                 .t_today = "Today"
                 .t_lang_label = "Language"
-                .t_city_beijing = "Beijing"
-                .t_city_shanghai = "Shanghai"
-                .t_city_guangzhou = "Guangzhou"
-                .t_city_shenzhen = "Shenzhen"
-                .t_city_hangzhou = "Hangzhou"
-                .t_city_chengdu = "Chengdu"
-                .t_city_xian = "Xi'an"
-                .t_city_wuhan = "Wuhan"
-                .t_city_harbin = "Harbin"
-                .t_city_sanya = "Sanya"
+                .t_cities_empty = "Search to add a city"
+                .t_startup_main = "Startup: Main city"
+                .t_startup_last = "Startup: Last selected"
                 .t_data_note_demo = "Demo data · Not live weather"
                 .t_source_demo = "Demo data"
                 .t_live_pre = "Live · "
@@ -1382,8 +1418,6 @@ widget App {
                 .t_settings = "设置"
                 .t_temp_unit = "温度单位"
                 .t_wind_unit = "风速单位"
-                .t_default_city = "默认城市"
-                .t_default_pre = "默认:"
                 .t_tab_hourly = "24小时"
                 .t_tab_daily = "5日"
                 .t_details = "当前详情"
@@ -1402,45 +1436,56 @@ widget App {
                 .t_now = "现在"
                 .t_today = "今天"
                 .t_lang_label = "语言"
-                .t_city_beijing = "北京"
-                .t_city_shanghai = "上海"
-                .t_city_guangzhou = "广州"
-                .t_city_shenzhen = "深圳"
-                .t_city_hangzhou = "杭州"
-                .t_city_chengdu = "成都"
-                .t_city_xian = "西安"
-                .t_city_wuhan = "武汉"
-                .t_city_harbin = "哈尔滨"
-                .t_city_sanya = "三亚"
+                .t_cities_empty = "搜索添加城市"
+                .t_startup_main = "启动:主城市"
+                .t_startup_last = "启动:上次选中"
                 .t_data_note_demo = "演示数据 · 非实时气象"
                 .t_source_demo = "演示样本"
                 .t_live_pre = "实时数据 · "
                 .t_search_empty = "无结果（或网络不可用）"
             }
-            .s_default_label = .t_default_pre + .s_default_city
+            // PLAN-009：启动偏好 label 随语言重拼
+            if .s_startup == "last" {
+                .s_startup_label = .t_startup_last
+            } else {
+                .s_startup_label = .t_startup_main
+            }
             if !.live {
                 .data_note = .t_data_note_demo
                 .source_label = .t_source_demo
             }
-            settings_set(.s_temp_unit, .s_wind_unit, .s_default_city, .lang)
+            settings_set(.s_temp_unit, .s_wind_unit, .lang, .s_startup, .s_last_id)
         }
 
-        .MoveCustom(id, dir) -> {
+        // PLAN-009：排序——move → 重灌（★ 与 main_id 随重灌更新）；当前
+        // 选中不因移动而改选、不触发取数
+        .MoveCity(id, dir) -> {
             let rm = cities_move(id, dir)
             if rm.ok {
-                .custom_ids = []
-                .custom_names = []
-                .custom_lats = []
-                .custom_lons = []
-                .custom_pills = []
+                .city_ids = []
+                .city_names = []
+                .city_lats = []
+                .city_lons = []
+                .cities_pills = []
                 var j int = 0
                 for x in rm.ids {
-                    .custom_ids.push(rm.ids.get(j))
-                    .custom_names.push(rm.names.get(j))
-                    .custom_lats.push(rm.lats.get(j))
-                    .custom_lons.push(rm.lons.get(j))
-                    .custom_pills.push({ id: rm.ids.get(j), name: rm.names.get(j) })
+                    .city_ids.push(rm.ids.get(j))
+                    .city_names.push(rm.names.get(j))
+                    .city_lats.push(rm.lats.get(j))
+                    .city_lons.push(rm.lons.get(j))
+                    if j == 0 {
+                        .cities_pills.push({ id: rm.ids.get(j), disp: "★ " + rm.names.get(j) })
+                    } else {
+                        .cities_pills.push({ id: rm.ids.get(j), disp: rm.names.get(j) })
+                    }
                     j = j + 1
+                }
+                if .city_ids.len() == 0 {
+                    .cities_empty = true
+                    .main_id = ""
+                } else {
+                    .cities_empty = false
+                    .main_id = .city_ids.get(0)
                 }
             }
         }
@@ -1453,266 +1498,14 @@ widget App {
             .forecast_tab = tab
         }
 
-        .SelectCity(id) -> {
-            .city_id = id
-            .active_custom = ""
-            // ASCII id → 中文名 + 数据（避免 a2r 中文比较 mojibake）
-            if id == "shanghai" {
-                .city_zh = "上海"
-            } else if id == "guangzhou" {
-                .city_zh = "广州"
-            } else if id == "shenzhen" {
-                .city_zh = "深圳"
-            } else if id == "hangzhou" {
-                .city_zh = "杭州"
-            } else if id == "chengdu" {
-                .city_zh = "成都"
-            } else if id == "xian" {
-                .city_zh = "西安"
-            } else if id == "wuhan" {
-                .city_zh = "武汉"
-            } else if id == "harbin" {
-                .city_zh = "哈尔滨"
-            } else if id == "sanya" {
-                .city_zh = "三亚"
-            } else {
-                .city_zh = "北京"
-            }
-            if id == "上海" {
-                .condition = "rain"
-                .cond_zh = "小雨"
-                .icon = "🌧️"
-                .temp = "21°"
-                .feels = "22°"
-                .humidity = "82%"
-                .wind = "15 km/h"
-                .uv = "中等"
-                .aqi = "55"
-                .aqi_level = "良"
-                .pressure = "1012 hPa"
-                .visibility = "8 km"
-            } else if id == "广州" {
-                .condition = "sunny"
-                .cond_zh = "晴"
-                .icon = "☀️"
-                .temp = "30°"
-                .feels = "33°"
-                .humidity = "70%"
-                .wind = "8 km/h"
-                .uv = "很强"
-                .aqi = "42"
-                .aqi_level = "优"
-                .pressure = "1012 hPa"
-                .visibility = "12 km"
-            } else if id == "深圳" {
-                .condition = "storm"
-                .cond_zh = "雷阵雨"
-                .icon = "⛈️"
-                .temp = "28°"
-                .feels = "31°"
-                .humidity = "78%"
-                .wind = "18 km/h"
-                .uv = "中等"
-                .aqi = "35"
-                .aqi_level = "优"
-                .pressure = "1012 hPa"
-                .visibility = "12 km"
-            } else if id == "杭州" {
-                .condition = "rain"
-                .cond_zh = "小雨"
-                .icon = "🌧️"
-                .temp = "22°"
-                .feels = "23°"
-                .humidity = "74%"
-                .wind = "10 km/h"
-                .uv = "中等"
-                .aqi = "60"
-                .aqi_level = "良"
-                .pressure = "1012 hPa"
-                .visibility = "8 km"
-            } else if id == "成都" {
-                .condition = "fog"
-                .cond_zh = "雾"
-                .icon = "🌫️"
-                .temp = "20°"
-                .feels = "21°"
-                .humidity = "85%"
-                .wind = "6 km/h"
-                .uv = "弱"
-                .aqi = "95"
-                .aqi_level = "轻度污染"
-                .pressure = "1008 hPa"
-                .visibility = "3 km"
-            } else if id == "西安" {
-                .condition = "sunny"
-                .cond_zh = "晴"
-                .icon = "☀️"
-                .temp = "25°"
-                .feels = "24°"
-                .humidity = "48%"
-                .wind = "14 km/h"
-                .uv = "很强"
-                .aqi = "78"
-                .aqi_level = "良"
-                .pressure = "1012 hPa"
-                .visibility = "12 km"
-            } else if id == "武汉" {
-                .condition = "partly"
-                .cond_zh = "多云"
-                .icon = "⛅"
-                .temp = "27°"
-                .feels = "29°"
-                .humidity = "66%"
-                .wind = "11 km/h"
-                .uv = "中等"
-                .aqi = "72"
-                .aqi_level = "良"
-                .pressure = "1012 hPa"
-                .visibility = "12 km"
-            } else if id == "哈尔滨" {
-                .condition = "snow"
-                .cond_zh = "小雪"
-                .icon = "❄️"
-                .temp = "-2°"
-                .feels = "-6°"
-                .humidity = "80%"
-                .wind = "20 km/h"
-                .uv = "弱"
-                .aqi = "50"
-                .aqi_level = "优"
-                .pressure = "1028 hPa"
-                .visibility = "5 km"
-            } else if id == "三亚" {
-                .condition = "sunny"
-                .cond_zh = "晴"
-                .icon = "☀️"
-                .temp = "31°"
-                .feels = "34°"
-                .humidity = "72%"
-                .wind = "16 km/h"
-                .uv = "很强"
-                .aqi = "28"
-                .aqi_level = "优"
-                .pressure = "1006 hPa"
-                .visibility = "12 km"
-            } else {
-                .condition = "partly"
-                .cond_zh = "多云"
-                .icon = "⛅"
-                .temp = "23°"
-                .feels = "25°"
-                .humidity = "65%"
-                .wind = "12 km/h"
-                .uv = "中等"
-                .aqi = "68"
-                .aqi_level = "良"
-                .pressure = "1012 hPa"
-                .visibility = "12 km"
-            }
-            .hourly = [
-                { time: .t_now, icon: .icon, temp: .temp, now: true },
-                { time: "15:00", icon: .icon, temp: .temp, now: false },
-                { time: "16:00", icon: .icon, temp: .temp, now: false },
-                { time: "17:00", icon: .icon, temp: .temp, now: false },
-                { time: "18:00", icon: .icon, temp: .temp, now: false },
-                { time: "19:00", icon: .icon, temp: .temp, now: false },
-                { time: "20:00", icon: .icon, temp: .temp, now: false },
-                { time: "21:00", icon: .icon, temp: .temp, now: false }
-            ]
-            .daily = [
-                { day: .t_today, icon: .icon, cond: .cond_zh, tmin: .temp, tmax: .temp },
-                { day: "周二", icon: .icon, cond: .cond_zh, tmin: .temp, tmax: .temp },
-                { day: "周三", icon: "☁️", cond: "阴", tmin: .temp, tmax: .temp },
-                { day: "周四", icon: "🌧️", cond: "小雨", tmin: .temp, tmax: .temp },
-                { day: "周五", icon: "⛅", cond: "多云", tmin: .temp, tmax: .temp }
-            ]
-            // r10：切城后拉真实数据；失败保留上方该城演示样本
-            let r = weather_report(id, .s_temp_unit, .s_wind_unit, .lang)
-            if r.ok {
-                .live = true
-                .condition = r.condition
-                .cond_zh = r.cond_zh
-                .icon = r.icon
-                .temp = r.temp
-                .feels = r.feels
-                .humidity = r.humidity
-                .wind = r.wind
-                .uv = r.uv
-                .aqi = r.aqi
-                .aqi_level = r.aqi_level
-                .pressure = r.pressure
-                .visibility = r.visibility
-                .updated_at = r.updated_at
-                .hourly = r.hourly
-                .daily = r.daily
-                .data_note = .t_live_pre + r.source
-                .source_label = r.source
-                .pm25 = r.pm25
-                .pm10 = r.pm10
-                .o3 = r.o3
-                .indices = r.indices
-                .precip = r.precip
-                .alert_level = r.alert_level
-                .alert_title = r.alert_title
-                .alert_text = r.alert_text
-            }
-        }
-
+        // r10+PLAN-009：真实刷新（Open-Meteo）；失败保留现状。updated_at
+        // 先置哨兵——取数成功才回填；统一 report_at(cur_lat,cur_lon) 单通道，
+        // 空表不取数
         .Refresh -> {
             .refreshing = true
-            // r10+PLAN-004：真实刷新（Open-Meteo）；失败保留现状。updated_at
-            // 先置哨兵——取数成功才回填（自定义通道可观察性）；active_custom
-            // 非空走 report_at，否则内置 weather_report。
             .updated_at = "--:--"
-            var did_custom bool = false
-            if .active_custom != "" {
-                var i int = 0
-                var found bool = false
-                var la str = ""
-                var lo str = ""
-                while i < .custom_ids.len() {
-                    if .custom_ids.get(i) == .active_custom {
-                        found = true
-                        la = .custom_lats.get(i)
-                        lo = .custom_lons.get(i)
-                    }
-                    i = i + 1
-                }
-                if found {
-                    did_custom = true
-                    let rc2 = weather_report_at(la, lo, .s_temp_unit, .s_wind_unit, .lang)
-                    if rc2.ok {
-                        .live = true
-                        .condition = rc2.condition
-                        .cond_zh = rc2.cond_zh
-                        .icon = rc2.icon
-                        .temp = rc2.temp
-                        .feels = rc2.feels
-                        .humidity = rc2.humidity
-                        .wind = rc2.wind
-                        .uv = rc2.uv
-                        .aqi = rc2.aqi
-                        .aqi_level = rc2.aqi_level
-                        .pressure = rc2.pressure
-                        .visibility = rc2.visibility
-                        .updated_at = rc2.updated_at
-                        .hourly = rc2.hourly
-                        .daily = rc2.daily
-                        .data_note = .t_live_pre + rc2.source
-                        .source_label = rc2.source
-                        .pm25 = rc2.pm25
-                        .pm10 = rc2.pm10
-                        .o3 = rc2.o3
-                        .indices = rc2.indices
-                        .precip = rc2.precip
-                        .alert_level = rc2.alert_level
-                        .alert_title = rc2.alert_title
-                        .alert_text = rc2.alert_text
-                    }
-                }
-            }
-            if !did_custom {
-                let r = weather_report(.city_id, .s_temp_unit, .s_wind_unit, .lang)
+            if !.cities_empty {
+                let r = weather_report_at(.cur_lat, .cur_lon, .s_temp_unit, .s_wind_unit, .lang)
                 if r.ok {
                     .live = true
                     .condition = r.condition
