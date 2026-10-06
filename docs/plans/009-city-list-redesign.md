@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-009
-status: execution_done
+status: reviewed
 feature_name: 城市体验重设计（主城市单一列表 + 搜索添加 + 排序 + 持久化 + 启动偏好）
 author: [agent]
 created_at: 2026-10-05T12:00:00Z
@@ -301,6 +301,25 @@ AutoLang .at widget（VM merged 主面 / Vue 轨桩后端随 api.at 契约自动
   （原生层，2/6 轮，日志正常行截断）→ per-boot 独立日志 + 顶层 except 计分
   兜底；「parked handler 重入被忽略」语义致 T15.8 首击 ✕ 丢弃 → 点击前等
   `updated_at` 回填（若产品意图为事件排队，需 src 跟进，见 §10）。
+- `stage: review | PLAN-009 | rev 2 | outcome: pass | reviewed_commit:
+  a0d4d020ff72a57e69d3cdc6ae53c601f0398798 | base_commit:
+  8e075d58cf31a356a7112e4a1fe5577c6e743ece | dependency_revisions:
+  auto-lang auto.exe（D:/autostack/auto-lang/target/debug，2026-10-06 11:17
+  构建）| spec_inputs: docs/specs/weather-app.md @91651a5 内 SD-01..05 冻结
+  diff（README/design 随附）| acceptance_results: AC-01..AC-08 全 pass
+  （AC-01..06/08 = 复审复跑 vm_smoke 69/69 运行时实证，T15.1-8 + T1/T2/
+  T3/T11 重写段全 PASS；AC-07 = SD-01..05 diff 逐条核对）| findings: R1
+  README「10 个内置城市」陈旧行（低·文档债，SD-05 未覆盖行）；R2 重复
+  添加已有城市时后端判重早退返回部分表 + 前端全量重灌 → 内存列表瞬断
+  （低·预存同构，文件不损且下次 reload 自愈，基线即有）；R3 README
+  降级行引用孤儿 weather_data.at（低·基线陈旧）——R1-R3 均非阻塞，
+  纠正建议见上 | evidence: 复审独立复跑 `python tests/vm_smoke.py`
+  Total 69 Failed 0（review-run bash-nsbv6msg，日志 %TEMP%/
+  weather-vm-smoke-9247-b3.log，worktree 工作树干净零未提交）；src diff
+  逐面人工核对（Init 选路/四 handler 语义/settings 五字段/VM 配方约束）
+  | next: merge`。局限声明：复审与实施同会话，结论以 git 产物 + 全量
+  复跑重建，未依赖实施 agent 总结；R1/R3 一行文档修复可并入 merge 或
+  微小 repair，由用户裁定。
 
 ## 10. 待澄清事项
 
