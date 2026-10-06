@@ -340,7 +340,13 @@ AutoLang .at widget（VM merged 主面 / Vue 轨桩后端随 api.at 契约自动
     本 submodule（先例 PLAN-007 收据同款）；
   - `archived`：`docs/plans/archived/009-city-list-redesign.md`，
     `status: archived`、`completion_kind: delivered`；
-  - `cleaned`：见末节（清理完成后补记）。
+  - `cleaned`：全部分支提交已落地（`merge-base --is-ancestor plan-009-dev
+    v0.6-dev` ✓，删除时 tip = ed8022b）；worktree 零未提交；`wt-guard.sh`
+    本机缺位（D:/autostack 无此脚本），以手工等价扫描代替（`find -type
+    l` 零符号链接 + PowerShell ReparsePoint 递归扫描零命中，移除前临场
+    复扫）；`git worktree remove` + `git branch -d plan-009-dev`（was
+    ed8022b）+ 组目录 `D:/autostack/.wt/weather-009` 已删；`git worktree
+    list` 实证仅剩主检出与在途 weather-008。清理完成，收据闭环。
 
 ## 10. 待澄清事项
 
