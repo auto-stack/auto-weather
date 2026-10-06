@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-009
-status: executing
+status: execution_done
 feature_name: 城市体验重设计（主城市单一列表 + 搜索添加 + 排序 + 持久化 + 启动偏好）
 author: [agent]
 created_at: 2026-10-05T12:00:00Z
-updated_at: 2026-10-06T00:00:00Z
+updated_at: 2026-10-06T12:00:00Z
 plan_revision: 2
-current_step: 0
+current_step: 5
 total_steps: 5
 supersedes_spec_components: []
 new_spec_components: []
@@ -256,20 +256,25 @@ AutoLang .at widget（VM merged 主面 / Vue 轨桩后端随 api.at 契约自动
 
 ## 8. 执行步骤
 
-- [ ] T-01 后端：种子/read-or-seed、cities_add/remove/move 空表边界、settings
+- [x] T-01 后端：种子/read-or-seed、cities_add/remove/move 空表边界、settings
   改 5 字段（删 default_city 校验，增 startup 白名单 + last_id）（AC-01/03/04/05）
-  - 验证：T15 相关断言过；既有 T7/T8/T10/T11 绿
-- [ ] T-02 前端 model/handler：cur_*/main_id/cities_empty/s_startup/s_last_id，
+  - 验证：`d6b2fd2`（api.at +82/-54）；T15 ①-⑧ 断言过；remove/move 经核查
+    零改动（边界守卫/空表写盘本就可用），「无 cities 键=损坏→种子」归入
+    read_or_seed
+- [x] T-02 前端 model/handler：cur_*/main_id/cities_empty/s_startup/s_last_id，
   pick_city 选中记忆，SelectCity/RemoveCity/MoveCity/AddHit/Refresh 合一，
   CycleStartup，Init 重排选路（AC-01/02/04/05/08）
-  - 验证：T2/T11/T15 断言过
-- [ ] T-03 前端视图：pill 条单 for 渲染+★+高亮+✕、空态 hint、设置卡删轮选行
+  - 验证：`5182675`（app.at +351/-558）；settings 调用点 8 处全 5 参与后端
+    逐项对齐；被删符号 grep 零命中
+- [x] T-03 前端视图：pill 条单 for 渲染+★+高亮+✕、空态 hint、设置卡删轮选行
   加启动行、删 t_city_* ×10 与 header if 链、i18n 三处增 3 个 t_key（AC-01/02/03/05）
-  - 验证：T1 快照地标过
-- [ ] T-04 测试：重写 T1/T2/T3/T11、新增 T15、全量 ×2（AC-03/04/06/08）
-  - 验证：vm_smoke 全绿 ×2
-- [ ] T-05 文档：SD-01..05（AC-07）
-  - 验证：commit 文件核查
+  - 验证：`5182675`；T1 快照「★ 北京」唯一 pill 地标两轮过
+- [x] T-04 测试：重写 T1/T2/T3/T11、新增 T15、全量 ×2（AC-03/04/06/08）
+  - 验证：`a0d4d02`（vm_smoke.py +681/-235）；**69/69 ×2 轮全绿**（含 T15
+    全部 16 项，⑥ 进程内重启实证未 SKIPPED）；harness 提取 launch/stop_vm
+    等可复用启停与 per-boot 日志
+- [x] T-05 文档：SD-01..05（AC-07）
+  - 验证：`91651a5`（specs 3 行/design §4·§5/README 3 处）
 
 依赖：T-01∥T-02∥T-03 可并行（契约已锁）；T-04 依赖前三；T-05 最后。
 
@@ -281,6 +286,21 @@ AutoLang .at widget（VM merged 主面 / Vue 轨桩后端随 api.at 契约自动
   契约 3→5 字段（+startup/last_id）、设置卡新增切换行（CycleStartup）、
   选中即记忆（pick_city 统一入口）、Init 选路、SD-02、新增 AC-08、T15 扩至
   8 断言。work/review/merge 仍未授权，待用户指示。
+- `stage: work | PLAN-009 | rev 2 | outcome: pass | code_commit: a0d4d02
+  (on plan-009-dev, base 8e075d5; T-01 d6b2fd2 / T-02·03 5182675 / T-05
+  91651a5) | task_ids: T-01..T-05 | evidence: vm_smoke 69/69 ×2 轮全绿
+  （第 2 轮 bash-sah9zd8r exit 0；T15 16 项含进程内重启实证）| blockers:
+  无 | next: review`。
+- **实施调整记录**：A1 `pick_city`/`reload_cities` 未做共享 fn——a2r 不把
+  顶层 fn 发射进 main.rs（app.at r9 注记实证），改为 handler 内联等价展开；
+  A2 基线无 `booting` 字段（属 PLAN-008 在途实现，本基线未含），未新增；
+  A3 `impl_cities_remove`/`impl_cities_move` 零改动（空表写盘/边界守卫经
+  逐行核查已满足），doc 注释旧表述同步更新；A4 T2b 旧断言误绑 demo 硬编码
+  文案（「周二」）且与起屏真实取数存在快照竞争，改契约稳定面断言（今天+
+  任一星期标签）+ 有界重试；A5 环境级 flake 防御——auto.exe 偶发静默崩溃
+  （原生层，2/6 轮，日志正常行截断）→ per-boot 独立日志 + 顶层 except 计分
+  兜底；「parked handler 重入被忽略」语义致 T15.8 首击 ✕ 丢弃 → 点击前等
+  `updated_at` 回填（若产品意图为事件排队，需 src 跟进，见 §10）。
 
 ## 10. 待澄清事项
 
@@ -288,3 +308,9 @@ AutoLang .at widget（VM merged 主面 / Vue 轨桩后端随 api.at 契约自动
   startup=last 的交互）——归未来定位计划。
 - `weather_data.at` 孤儿文件与 `weather_report` 内置 id 端点的最终下线——
   不在本计划范围，登记备查。
+- VM 进程偶发静默崩溃（auto-lang 原生层 flake，本计划期间 2/6 轮；per-boot
+  日志在 `%TEMP%/weather-vm-smoke-*-b{n}.log`）——测试已防御计分，根除需
+  auto-lang 侧排查，登记备查。
+- 「parked handler 重入被忽略」语义（vm 日志 `[VM-PARKED] ... re-entry
+  ignored`）：取数 in-flight 时同 handler 再入被丢弃——若产品意图是事件
+  排队而非丢弃，需 runtime/src 跟进；当前测试侧以等待 `updated_at` 回填规避。
