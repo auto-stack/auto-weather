@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-009
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: 城市体验重设计（主城市单一列表 + 搜索添加 + 排序 + 持久化 + 启动偏好）
 author: [agent]
 created_at: 2026-10-05T12:00:00Z
@@ -320,6 +321,26 @@ AutoLang .at widget（VM merged 主面 / Vue 轨桩后端随 api.at 契约自动
   | next: merge`。局限声明：复审与实施同会话，结论以 git 产物 + 全量
   复跑重建，未依赖实施 agent 总结；R1/R3 一行文档修复可并入 merge 或
   微小 repair，由用户裁定。
+- **PLAN-009:r2 merge 收据**
+  - `prepared`：复审基线 rev 2 / reviewed a0d4d02 / base 8e075d5 / 冻结
+    delta SD-01..05（@91651a5）；R1/R3 文档修复 ec38aac 为纯文档后裔（仅
+    README +3/−2，实现/依赖零变更）→ 成为 delivery 候选；
+  - `landed`：plan-009-dev rebase 至 v0.6-dev 4f0514a（无冲突）→
+    旧→新 d6b2fd2→88efc80 / 5182675→5e9723d / 91651a5→a208eec /
+    a0d4d02→1db7246 / ec38aac→ed8022b；`git range-diff
+    8e075d5..a0d4d02 4f0514a..ed8022b` 全 `=`（等价证明）；主检出
+    `git merge --ff-only plan-009-dev` → **v0.6-dev tip =
+    ed8022b9b571fac8e04608e32ec96f47b2a113fe = delivery commit**，无合并
+    提交；主检出落地冒烟：初次遇外部重建移除 auto.exe（环境 flake，
+    watcher 330s 后复现）；首轮 69/69 中 T10「Refresh on selected city」
+    时序红（VM 日志实证 handler 5.1s 后正常 resumed——并发重建负载下拉
+    伸 HTTP；非语义回归）→ 重试 2 **69/69 全绿 exit 0**（/tmp/
+    plan009-main-smoke2.log），main known-good；
+  - `ledger_refreshed`：**N/A**——auto-os 父仓 `.autoos/specs.json` 未登记
+    本 submodule（先例 PLAN-007 收据同款）；
+  - `archived`：`docs/plans/archived/009-city-list-redesign.md`，
+    `status: archived`、`completion_kind: delivered`；
+  - `cleaned`：见末节（清理完成后补记）。
 
 ## 10. 待澄清事项
 
