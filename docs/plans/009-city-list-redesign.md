@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-009
-status: drafting
+status: executing
 feature_name: 城市体验重设计（主城市单一列表 + 搜索添加 + 排序 + 持久化 + 启动偏好）
 author: [agent]
 created_at: 2026-10-05T12:00:00Z
