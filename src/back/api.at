@@ -114,14 +114,16 @@ pub type CityListOut = {
     lons: []str
 }
 
-// PLAN-006 设置面（整对象替换；缺省 c/kmh/beijing/zh）
+// PLAN-006 设置面 / PLAN-009 五字段化（整对象替换；缺省 c/kmh/zh/main/""）
+// 删 default_city（启动落点改由 cities.json 位置 0 主城市 + startup/last_id 表达）
 pub type SettingsOut = {
     ok: bool
     error: str
     temp_unit: str
     wind_unit: str
-    default_city: str
     lang: str
+    startup: str
+    last_id: str
 }
 
 // ── 城市坐标表（内置城市 id → Open-Meteo 纬经度，2 位小数）──
@@ -786,6 +788,7 @@ fn impl_search(q str, lang str) SearchOut {
 }
 
 // ── PLAN-001：城市列表持久化（local_data_dir JSON 文件）──
+// PLAN-009：升格为唯一有序城市表（位置 0=主城市，缺省种子=北京）
 fn cities_dir() str {
     return env.local_data_dir() + "/auto-weather"
 }
@@ -794,7 +797,34 @@ fn cities_path() str {
     return cities_dir() + "/cities.json"
 }
 
-// 读文件 → 平行列表；文件缺失返回 ok:true 空表（首次使用）
+// PLAN-009：种子文本（单条北京；首次写操作前的一切读路径回灌此表）
+fn seed_cities() str {
+    return "{\"cities\":[{\"id\":\"39.90_116.40\",\"name\":\"北京\",\"lat\":\"39.90\",\"lon\":\"116.40\"}]}"
+}
+
+// 读-或-种子：文件缺失/解析失败（含 cities 键缺失）→ 种子文本；
+// 文件存在且 cities 键在 → 文件文本——空数组「删光」是合法持久态，不回灌种子
+fn cities_read_or_seed() str {
+    let path str = cities_path()
+    if !file.exists(path) {
+        return seed_cities()
+    }
+    let raw str = file.read_text(path)
+    if raw == "" {
+        return seed_cities()
+    }
+    let v = json.parse(raw)
+    if v == nil {
+        return seed_cities()
+    }
+    let cs = v.cities
+    if cs == nil {
+        return seed_cities()
+    }
+    return raw
+}
+
+// 读路径（缺失/损坏回灌种子）→ 平行列表；空表（删光）返回 ok:true 空表
 fn impl_cities_get() CityListOut {
     var out CityListOut = CityListOut {
         ok: false,
@@ -804,16 +834,7 @@ fn impl_cities_get() CityListOut {
         lats: [],
         lons: []
     }
-    let path str = cities_path()
-    if !file.exists(path) {
-        out.ok = true
-        return out
-    }
-    let raw str = file.read_text(path)
-    if raw == "" {
-        out.ok = true
-        return out
-    }
+    let raw str = cities_read_or_seed()
     let v = json.parse(raw)
     if v == nil {
         out.error = "cities parse failed"
@@ -832,7 +853,8 @@ fn impl_cities_get() CityListOut {
     return out
 }
 
-// 读旧表 → 判重 → 追加 → 重写 → 返回新表（VG13：数组不出 fn，全就地）
+// 读旧表（缺失/损坏回灌种子）→ 判重 → 追加 → 重写 → 返回新表
+// （VG13：数组不出 fn，全就地；PLAN-009：首次添加时北京种子一并落盘）
 fn impl_cities_add(id str, name str, lat str, lon str) CityListOut {
     var out CityListOut = CityListOut {
         ok: false,
@@ -843,25 +865,21 @@ fn impl_cities_add(id str, name str, lat str, lon str) CityListOut {
         lons: []
     }
     let path str = cities_path()
-    if file.exists(path) {
-        let raw str = file.read_text(path)
-        if raw != "" {
-            let v = json.parse(raw)
-            if v != nil {
-                let cs = v.cities
-                if cs != nil {
-                    for c in cs {
-                        let cid str = "" + c.id
-                        out.ids.push(cid)
-                        out.names.push("" + c.name)
-                        out.lats.push("" + c.lat)
-                        out.lons.push("" + c.lon)
-                        if cid == id {
-                            out.ok = true
-                            out.error = ""
-                            return out
-                        }
-                    }
+    let raw str = cities_read_or_seed()
+    let v = json.parse(raw)
+    if v != nil {
+        let cs = v.cities
+        if cs != nil {
+            for c in cs {
+                let cid str = "" + c.id
+                out.ids.push(cid)
+                out.names.push("" + c.name)
+                out.lats.push("" + c.lat)
+                out.lons.push("" + c.lon)
+                if cid == id {
+                    out.ok = true
+                    out.error = ""
+                    return out
                 }
             }
         }
@@ -941,6 +959,9 @@ fn impl_cities_remove(id str) CityListOut {
 }
 
 // ── PLAN-006：设置面持久化（settings.json 整对象替换）──
+// PLAN-009：契约改 5 字段——删 default_city（内置城轮选随前端下线，
+// coords_for 校验随之删除，表本身保留给 weather_report 内置 id 端点），
+// 增 startup（main|last，启动落点白名单）/ last_id（最近选中城市 id，自由 str）
 fn settings_path() str {
     return cities_dir() + "/settings.json"
 }
@@ -951,11 +972,13 @@ fn settings_defaults() SettingsOut {
         error: "",
         temp_unit: "c",
         wind_unit: "kmh",
-        default_city: "beijing",
-        lang: "zh"
+        lang: "zh",
+        startup: "main",
+        last_id: ""
     }
 }
 
+// 按名取值：旧 4 字段文件（含 default_city）读取不报错，多余字段忽略
 fn impl_settings_get() SettingsOut {
     let path str = settings_path()
     if !file.exists(path) {
@@ -980,25 +1003,30 @@ fn impl_settings_get() SettingsOut {
     if wu != nil {
         out.wind_unit = "" + wu
     }
-    let dc = v.default_city
-    if dc != nil {
-        out.default_city = "" + dc
-    }
     let lg = v.lang
     if lg != nil {
         out.lang = "" + lg
     }
+    let su = v.startup
+    if su != nil {
+        out.startup = "" + su
+    }
+    let li = v.last_id
+    if li != nil {
+        out.last_id = "" + li
+    }
     return out
 }
 
-fn impl_settings_set(temp_unit str, wind_unit str, default_city str, lang str) SettingsOut {
+fn impl_settings_set(temp_unit str, wind_unit str, lang str, startup str, last_id str) SettingsOut {
     var out SettingsOut = SettingsOut {
         ok: false,
         error: "",
         temp_unit: temp_unit,
         wind_unit: wind_unit,
-        default_city: default_city,
-        lang: lang
+        lang: lang,
+        startup: startup,
+        last_id: last_id
     }
     if temp_unit != "c" && temp_unit != "f" {
         out.error = "bad temp_unit"
@@ -1008,15 +1036,15 @@ fn impl_settings_set(temp_unit str, wind_unit str, default_city str, lang str) S
         out.error = "bad wind_unit"
         return out
     }
-    if coords_for(default_city) == "" {
-        out.error = "bad default_city"
-        return out
-    }
     if lang != "zh" && lang != "en" {
         out.error = "bad lang"
         return out
     }
-    let txt str = "{\"temp_unit\":" + quote_json(temp_unit) + ",\"wind_unit\":" + quote_json(wind_unit) + ",\"default_city\":" + quote_json(default_city) + ",\"lang\":" + quote_json(lang) + "}"
+    if startup != "main" && startup != "last" {
+        out.error = "bad startup"
+        return out
+    }
+    let txt str = "{\"temp_unit\":" + quote_json(temp_unit) + ",\"wind_unit\":" + quote_json(wind_unit) + ",\"lang\":" + quote_json(lang) + ",\"startup\":" + quote_json(startup) + ",\"last_id\":" + quote_json(last_id) + "}"
     file.create_dir(cities_dir())
     let w int = file.write_text(settings_path(), txt)
     if w != 0 {
@@ -1128,13 +1156,13 @@ pub fn settings_get() SettingsOut {
     return impl_settings_get()
 }
 
-/// POST /api/weather/settings — 整对象替换（body: temp_unit/wind_unit/default_city/lang）
+/// POST /api/weather/settings — 整对象替换（body: temp_unit/wind_unit/lang/startup/last_id）
 #[api(method = "POST", path = "/api/weather/settings")]
-pub fn settings_set(temp_unit str, wind_unit str, default_city str, lang str) SettingsOut {
-    return impl_settings_set(temp_unit, wind_unit, default_city, lang)
+pub fn settings_set(temp_unit str, wind_unit str, lang str, startup str, last_id str) SettingsOut {
+    return impl_settings_set(temp_unit, wind_unit, lang, startup, last_id)
 }
 
-/// POST /api/weather/cities_move — 自定义城市排序（body: id/dir）
+/// POST /api/weather/cities_move — 唯一有序表排序（body: id/dir）
 #[api(method = "POST", path = "/api/weather/cities_move")]
 pub fn cities_move(id str, dir str) CityListOut {
     return impl_cities_move(id, dir)
@@ -1146,19 +1174,19 @@ pub fn weather_search(q str, lang str) SearchOut {
     return impl_search(q, lang)
 }
 
-/// GET /api/weather/cities — 自定义城市列表
+/// GET /api/weather/cities — 唯一有序城市表（位置 0=主城市，读路径种子回灌）
 #[api(method = "GET", path = "/api/weather/cities")]
 pub fn cities_get() CityListOut {
     return impl_cities_get()
 }
 
-/// POST /api/weather/cities — 添加自定义城市（body: id/name/lat/lon）
+/// POST /api/weather/cities — 添加城市（去重追加，body: id/name/lat/lon）
 #[api(method = "POST", path = "/api/weather/cities")]
 pub fn cities_add(id str, name str, lat str, lon str) CityListOut {
     return impl_cities_add(id, name, lat, lon)
 }
 
-/// DELETE /api/weather/cities?id= — 移除自定义城市（PLAN-002）
+/// DELETE /api/weather/cities?id= — 移除城市（删光=空表合法持久态）
 #[api(method = "DELETE", path = "/api/weather/cities")]
 pub fn cities_remove(id str) CityListOut {
     return impl_cities_remove(id)
