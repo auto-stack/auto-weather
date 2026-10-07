@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-010
-status: execution_done
+status: reviewed
 feature_name: 添加城市弹出面板（＋按钮入口，添加即选中）
 author: [agent]
 created_at: 2026-10-06T00:00:00Z
@@ -224,6 +224,25 @@ AutoLang .at widget（VM merged 主面 / Vue 轨 api_gen 桩随契约再生成�
   QD_ID 经 curl 实证系 Open-Meteo「青岛」首条命中截断值，依赖 geocoding
   首条排序（若 API 结果集变化会显式 FAIL，脆弱点登记备查）；A4 面板 ✕
   按钮采用完整 style 字面量（icon_btn 无对齐类，视图拼接受限）。
+- `stage: review | PLAN-010 | rev 1 | outcome: pass | reviewed_commit:
+  8f15a55a4c48dccd4383c678ac82d74c4c8db394 | base_commit:
+  8340a95ecab2b34fe0689cc69dba10f3b0c17952 | dependency_revisions:
+  auto-lang auto.exe（D:/autostack/auto-lang/target/debug，2026-10-06
+  16:50 构建）| spec_inputs: docs/specs/weather-app.md @1053e6a 内 SD-01/02
+  冻结 diff（README 随附）| acceptance_results: AC-01..AC-07 全 pass
+  （AC-01..06 = 复审复跑 2 vm_smoke 92/92 exit 0 运行时实证，T16 全过 +
+  T1 新地标 + T3/T7/T8/T10/T11/T13/T15 改写段；AC-07 = SD-01/02 diff
+  逐条核对）| findings: R1 `panel_is_closed` 以「添加城市」缺席判定、空表
+  hint「点 ＋ 添加城市」含同子串——仅适用非空表上下文（T16 位于 T15 后
+  成立，docstring 已标注；N 级非阻塞）；R2 T8 面板交互时序 flake（复跑 1
+  双红、复跑 2 全绿；VM 日志实证该轮 DoSearch HTTP 仅 270ms——属 UI
+  快照/aura 时序族，PLAN-008 A4 同族先例；N 级非阻塞，频率升高再硬化重
+  试窗）| evidence: 复审复跑 2 `python tests/vm_smoke.py` Total 92 Failed
+  0 exit 0（bash-bhisqk5a，/tmp/plan010-review-run2.log，worktree 零未提
+  交）；复跑 1 T8 红完整日志 /tmp/plan010-review-run.log + per-boot VM 日
+  志；src diff 逐面人工核对（面板构型/AddHit 新语义/Toggle 互斥/判重全表/
+  i18n 四处）| next: merge`。局限声明：复审与实施同会话，结论以 git 产物
+  + 两轮独立复跑重建，未依赖实施 agent 总结。
 
 ## 10. 待澄清事项
 
