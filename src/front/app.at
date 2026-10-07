@@ -78,6 +78,7 @@ widget App {
         SetLayout(str),
         SetForecastTab(str),
         RemoveCity(str),
+        ToggleAddCity,
         ToggleSettings,
         SetTempUnit(str),
         SetWindUnit(str),
@@ -156,6 +157,8 @@ widget App {
         var s_last_id str = ""
         // 启动偏好按钮 label（唯一可定位；视图 paren-expr 受限，handler 预拼）
         var s_startup_label str = "启动:主城市"
+        // PLAN-010：添加城市弹出面板门控（＋ 按钮开合；与 settings_open 互斥）
+        var add_open bool = false
         var settings_open bool = false
         // PLAN-007：界面语言（zh/en；label 变量化后全面生效）
         var lang str = "zh"
@@ -169,6 +172,7 @@ widget App {
         var t_refreshing str = "刷新中…"
         var t_search_ph str = "搜索城市（中文/拼音）"
         var t_search str = "搜索"
+        var t_add_city str = "添加城市"
         var t_settings str = "设置"
         var t_temp_unit str = "温度单位"
         var t_wind_unit str = "风速单位"
@@ -192,7 +196,7 @@ widget App {
         var t_lang_label str = "语言"
         // PLAN-009：空态 hint + 启动偏好按钮文案（城市名不再随语言翻译——
         // 统一取后端持久化名；主城市 ★ 徽记由重灌预拼进 disp）
-        var t_cities_empty str = "搜索添加城市"
+        var t_cities_empty str = "点 ＋ 添加城市"
         var t_startup_main str = "启动:主城市"
         var t_startup_last str = "启动:上次选中"
         var t_data_note_demo str = "演示数据 · 非实时气象"
@@ -277,24 +281,39 @@ widget App {
                         } else {
                             button "🌙" { onclick: .ToggleTheme, style: icon_btn }
                         }
+                        // PLAN-010：添加城市面板入口（＋；与 ⚙️ 设置卡互斥）
+                        button "＋" { onclick: .ToggleAddCity, style: icon_btn }
                         button "⚙️" { onclick: .ToggleSettings, style: icon_btn }
                     }
                 }
 
-                // ── PLAN-001/004：城市搜索（横屏；竖屏同块在 portrait 分支）──
-                row {
-                    style: "w-full items-center gap-2"
-                    input { placeholder: .t_search_ph, value: .search_q, oninput: .SearchChanged, style: "flex-1 px-3 py-1.5 text-xs rounded-full border border-border bg-background text-foreground outline-none" }
-                    button .t_search { onclick: .DoSearch, variant: "primary", style: refresh_idle }
-                }
-                if .search_err != "" {
-                    text .search_err { style: hint_text }
-                }
-                // 搜索结果行（空列表 for 零迭代；点击添加为自定义城市）
-                row {
-                    style: "w-full gap-2 flex-wrap"
-                    for h in .search_hits {
-                        button h.label { onclick: .AddHit(h.id), variant: "secondary", style: city_pill_off }
+                // ── PLAN-010：添加城市弹出面板（＋ 开合；内联弹出卡与设置
+                // 卡同构——VM 轨无 absolute 悬浮；header 后、pill 条前共享区）──
+                if .add_open {
+                    col {
+                        style: "w-full gap-2 bg-card border border-border rounded-2xl p-3"
+                        // 标题行：标题 + ml-auto ✕（关面板即清搜索区）
+                        row {
+                            style: "w-full items-center gap-2"
+                            text .t_add_city { style: section_title }
+                            button "✕" { onclick: .ToggleAddCity, style: "ml-auto w-9 h-9 items-center justify-center rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors" }
+                        }
+                        // 搜索行（原主页搜索块样式照搬；DoSearch/SearchChanged 不变）
+                        row {
+                            style: "w-full items-center gap-2"
+                            input { placeholder: .t_search_ph, value: .search_q, oninput: .SearchChanged, style: "flex-1 px-3 py-1.5 text-xs rounded-full border border-border bg-background text-foreground outline-none" }
+                            button .t_search { onclick: .DoSearch, variant: "primary", style: refresh_idle }
+                        }
+                        if .search_err != "" {
+                            text .search_err { style: hint_text }
+                        }
+                        // 结果行（空列表 for 零迭代；点结果添加并选中）
+                        row {
+                            style: "w-full gap-2 flex-wrap"
+                            for h in .search_hits {
+                                button h.label { onclick: .AddHit(h.id), variant: "secondary", style: city_pill_off }
+                            }
+                        }
                     }
                 }
 
@@ -304,7 +323,7 @@ widget App {
                     scroll (axis: "x", style: "w-full h-full") {
                         row {
                             style: "items-center gap-2 h-full pr-2"
-                            // PLAN-009：空表 hint（删光城市 → 引导搜索添加）
+                            // PLAN-009/010：空表 hint（删光城市 → 引导 ＋ 添加）
                             if .cities_empty {
                                 text .t_cities_empty { style: hint_text }
                             }
@@ -932,6 +951,7 @@ widget App {
                 .t_refreshing = "Refreshing…"
                 .t_search_ph = "Search city (中文/拼音)"
                 .t_search = "Search"
+                .t_add_city = "Add city"
                 .t_settings = "Settings"
                 .t_temp_unit = "Temp unit"
                 .t_wind_unit = "Wind unit"
@@ -953,7 +973,7 @@ widget App {
                 .t_now = "Now"
                 .t_today = "Today"
                 .t_lang_label = "Language"
-                .t_cities_empty = "Search to add a city"
+                .t_cities_empty = "Tap + to add a city"
                 .t_startup_main = "Startup: Main city"
                 .t_startup_last = "Startup: Last selected"
                 .t_data_note_demo = "Demo data · Not live weather"
@@ -1111,11 +1131,12 @@ widget App {
             }
         }
 
-        // PLAN-001/009：添加搜索结果进唯一有序表（索引循环定位，handler
-        // 不读循环变量 map——VG4；cities_add 返回新表即重灌）。此前空表
-        // → pick_city(0) 语义：自动选中首城 + last_id 记忆落盘 + 取数
+        // PLAN-010：添加搜索结果进唯一有序表（索引循环定位，handler
+        // 不读循环变量 map——VG4；cities_add 返回新表即重灌）。添加即
+        // 选中：重灌后按 id 在表内索引定位 → pick_city 语义（cur_* +
+        // s_last_id 记忆 + settings 落盘）→ 取数 → 关面板清搜索区；
+        // !r2.ok 面板与搜索区保持原状（不开不关、不清空）
         .AddHit(id) -> {
-            .search_err = ""
             var i int = 0
             var found bool = false
             var nm str = ""
@@ -1131,10 +1152,6 @@ widget App {
                 i = i + 1
             }
             if found {
-                var was_empty bool = false
-                if .city_ids.len() == 0 {
-                    was_empty = true
-                }
                 let r2 = cities_add(id, nm, la, lo)
                 if r2.ok {
                     .city_ids = []
@@ -1162,46 +1179,58 @@ widget App {
                         .cities_empty = false
                         .main_id = .city_ids.get(0)
                     }
-                    .search_hits = []
-                    .search_q = ""
-                    if was_empty {
-                        // pick_city(0)：cur_* + last_id 记忆 + settings 落盘
-                        .cur_id = .city_ids.get(0)
-                        .cur_name = .city_names.get(0)
-                        .cur_lat = .city_lats.get(0)
-                        .cur_lon = .city_lons.get(0)
-                        .s_last_id = .city_ids.get(0)
-                        settings_set(.s_temp_unit, .s_wind_unit, .lang, .s_startup, .s_last_id)
-                        let r = weather_report_at(.cur_lat, .cur_lon, .s_temp_unit, .s_wind_unit, .lang)
-                        if r.ok {
-                            .live = true
-                            .condition = r.condition
-                            .cond_zh = r.cond_zh
-                            .icon = r.icon
-                            .temp = r.temp
-                            .feels = r.feels
-                            .humidity = r.humidity
-                            .wind = r.wind
-                            .uv = r.uv
-                            .aqi = r.aqi
-                            .aqi_level = r.aqi_level
-                            .pressure = r.pressure
-                            .visibility = r.visibility
-                            .updated_at = r.updated_at
-                            .hourly = r.hourly
-                            .daily = r.daily
-                            .data_note = .t_live_pre + r.source
-                            .source_label = r.source
-                            .pm25 = r.pm25
-                            .pm10 = r.pm10
-                            .o3 = r.o3
-                            .indices = r.indices
-                            .precip = r.precip
-                            .alert_level = r.alert_level
-                            .alert_title = r.alert_title
-                            .alert_text = r.alert_text
+                    // 添加即选中：按 id 在重灌后 city_ids 里索引定位
+                    // （重复添加时 id 已在表内，直接选中该城）
+                    var s int = 0
+                    var idx int = 0
+                    while s < .city_ids.len() {
+                        if .city_ids.get(s) == id {
+                            idx = s
                         }
+                        s = s + 1
                     }
+                    // pick_city 语义：cur_*（含坐标）+ s_last_id 记忆 +
+                    // settings_set 5 参落盘 → report_at 取数（失败保现状）
+                    .cur_id = id
+                    .cur_name = .city_names.get(idx)
+                    .cur_lat = .city_lats.get(idx)
+                    .cur_lon = .city_lons.get(idx)
+                    .s_last_id = id
+                    settings_set(.s_temp_unit, .s_wind_unit, .lang, .s_startup, .s_last_id)
+                    let r = weather_report_at(.cur_lat, .cur_lon, .s_temp_unit, .s_wind_unit, .lang)
+                    if r.ok {
+                        .live = true
+                        .condition = r.condition
+                        .cond_zh = r.cond_zh
+                        .icon = r.icon
+                        .temp = r.temp
+                        .feels = r.feels
+                        .humidity = r.humidity
+                        .wind = r.wind
+                        .uv = r.uv
+                        .aqi = r.aqi
+                        .aqi_level = r.aqi_level
+                        .pressure = r.pressure
+                        .visibility = r.visibility
+                        .updated_at = r.updated_at
+                        .hourly = r.hourly
+                        .daily = r.daily
+                        .data_note = .t_live_pre + r.source
+                        .source_label = r.source
+                        .pm25 = r.pm25
+                        .pm10 = r.pm10
+                        .o3 = r.o3
+                        .indices = r.indices
+                        .precip = r.precip
+                        .alert_level = r.alert_level
+                        .alert_title = r.alert_title
+                        .alert_text = r.alert_text
+                    }
+                    // 成功收尾：关面板 + 清搜索区
+                    .add_open = false
+                    .search_q = ""
+                    .search_err = ""
+                    .search_hits = []
                 }
             }
         }
@@ -1342,9 +1371,25 @@ widget App {
             }
         }
 
-        // PLAN-006：设置中心 handler
+        // PLAN-010：添加城市面板开合（＋/✕）；开时收起设置卡（互斥），
+        // 关时清搜索区——保证再次打开是干净态
+        .ToggleAddCity -> {
+            .add_open = !.add_open
+            if .add_open {
+                .settings_open = false
+            } else {
+                .search_q = ""
+                .search_err = ""
+                .search_hits = []
+            }
+        }
+
+        // PLAN-006/010：设置中心 handler；开时收起添加面板（互斥）
         .ToggleSettings -> {
             .settings_open = !.settings_open
+            if .settings_open {
+                .add_open = false
+            }
         }
 
         .SetTempUnit(u) -> {
@@ -1380,6 +1425,7 @@ widget App {
                 .t_refreshing = "Refreshing…"
                 .t_search_ph = "Search city (中文/拼音)"
                 .t_search = "Search"
+                .t_add_city = "Add city"
                 .t_settings = "Settings"
                 .t_temp_unit = "Temp unit"
                 .t_wind_unit = "Wind unit"
@@ -1401,7 +1447,7 @@ widget App {
                 .t_now = "Now"
                 .t_today = "Today"
                 .t_lang_label = "Language"
-                .t_cities_empty = "Search to add a city"
+                .t_cities_empty = "Tap + to add a city"
                 .t_startup_main = "Startup: Main city"
                 .t_startup_last = "Startup: Last selected"
                 .t_data_note_demo = "Demo data · Not live weather"
@@ -1415,6 +1461,7 @@ widget App {
                 .t_refreshing = "刷新中…"
                 .t_search_ph = "搜索城市（中文/拼音）"
                 .t_search = "搜索"
+                .t_add_city = "添加城市"
                 .t_settings = "设置"
                 .t_temp_unit = "温度单位"
                 .t_wind_unit = "风速单位"
@@ -1436,7 +1483,7 @@ widget App {
                 .t_now = "现在"
                 .t_today = "今天"
                 .t_lang_label = "语言"
-                .t_cities_empty = "搜索添加城市"
+                .t_cities_empty = "点 ＋ 添加城市"
                 .t_startup_main = "启动:主城市"
                 .t_startup_last = "启动:上次选中"
                 .t_data_note_demo = "演示数据 · 非实时气象"
