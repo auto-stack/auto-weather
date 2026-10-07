@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-010
-status: drafting
+status: executing
 feature_name: 添加城市弹出面板（＋按钮入口，添加即选中）
 author: [agent]
 created_at: 2026-10-06T00:00:00Z
