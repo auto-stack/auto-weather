@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-010
-status: executing
+status: execution_done
 feature_name: 添加城市弹出面板（＋按钮入口，添加即选中）
 author: [agent]
 created_at: 2026-10-06T00:00:00Z
-updated_at: 2026-10-06T00:00:00Z
+updated_at: 2026-10-07T00:00:00Z
 plan_revision: 1
-current_step: 0
+current_step: 4
 total_steps: 4
 supersedes_spec_components: []
 new_spec_components: []
@@ -192,15 +192,19 @@ AutoLang .at widget（VM merged 主面 / Vue 轨 api_gen 桩随契约再生成�
 
 ## 8. 执行步骤
 
-- [ ] T-01 前端：删搜索块、＋ 按钮、add_open 面板、AddHit 重写、
+- [x] T-01 前端：删搜索块、＋ 按钮、add_open 面板、AddHit 重写、
   Toggle 互斥、i18n 四处（AC-01/02/03/05）
-  - 验证：T16 ①②③ + T1 地标过
-- [ ] T-02 后端：impl_cities_add 判重返全表（R2 修复）（AC-04）
-  - 验证：T16 ④；既有 T15.2/8 回归
-- [ ] T-03 测试：helper + 改 T3/T7/T8/T10/T15 + 新增 T16 + 全量 ×2（AC-04/06）
-  - 验证：vm_smoke 全绿 ×2
-- [ ] T-04 文档：SD-01/02（AC-07）
-  - 验证：commit 文件核查
+  - 验证：`950cf77`（app.at +113/−66）；自查 grep 全过（主页零搜索残留、
+    add_open 三处一致、settings_set 仍 8 处 5 参、i18n 四处全补）
+- [x] T-02 后端：impl_cities_add 判重返全表（R2 修复）（AC-04）
+  - 验证：`fe2cd3b`（api.at 8+/3−，dup 标记+全表返回，不重写文件语义不变）；
+    T16.4 两轮 PASS
+- [x] T-03 测试：helper + 改 T3/T7/T8/T10/T15 + 新增 T16 + 全量 ×2（AC-04/06）
+  - 验证：`8f15a55`（vm_smoke.py +341/−35）；**92/92 ×2 轮全绿 exit 0**
+    （T16 11 项断言两轮全过，含 `add_open:false` state 直断言）；覆盖扩及
+    T11/T13（任务清单未列但含搜索步骤，一并改写）
+- [x] T-04 文档：SD-01/02（AC-07）
+  - 验证：`1053e6a`（specs F-P0-01 行 + README 城市列表行）
 
 依赖：T-01∥T-02 可并行；T-03 依赖前两；T-04 最后。
 
@@ -209,6 +213,17 @@ AutoLang .at widget（VM merged 主面 / Vue 轨 api_gen 桩随契约再生成�
 - `stage: new | PLAN-010 | rev 1 | outcome: pass | next: work`——授权内
   （用户 2026-10-06 需求 + "需要一个新的计划文件跟踪"）；work/review/
   merge 未授权，待用户指示。
+- `stage: work | PLAN-010 | rev 1 | outcome: pass | code_commit: 8f15a55
+  (on plan-010-dev, base 8340a95; T-01 950cf77 / T-02 fe2cd3b / T-04
+  1053e6a) | task_ids: T-01..T-04 | evidence: vm_smoke 92/92 ×2 轮全绿
+  exit 0（T16 11 项断言两轮全过）| blockers: 无 | next: review`。
+- **实施调整记录**：A1 测试覆盖扩及 T11/T13（任务清单未列但其搜索步骤
+  随交互迁移，不改则红；属同一变更面）；A2 首轮 T10 两红为测试前置
+  过期——AddHit 新语义使 T8④ 删大连后当前城回落北京，T8 末追加重选
+  青岛恢复 T10 前置（src 行为符合既有契约，非 bug）；A3 T16③ 硬编码
+  QD_ID 经 curl 实证系 Open-Meteo「青岛」首条命中截断值，依赖 geocoding
+  首条排序（若 API 结果集变化会显式 FAIL，脆弱点登记备查）；A4 面板 ✕
+  按钮采用完整 style 字面量（icon_btn 无对齐类，视图拼接受限）。
 
 ## 10. 待澄清事项
 
