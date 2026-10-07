@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""PLAN-660/009 VM smoke for 014-weather (desktop/VM arm).
+"""PLAN-660/009/010 VM smoke for 014-weather (desktop/VM arm).
 
 Starts `auto run -r vm`, waits for UI MCP, then asserts:
-  - T1  landscape first paint（PLAN-009 城市模型：唯一 pill「★ 北京」+ 北京 header）
+  - T1  landscape first paint（PLAN-009 城市模型：唯一 pill「★ 北京」+ 北京 header；
+      PLAN-010：主页无搜索区——input/搜索按钮仅在「＋」添加城市面板内）
   - T2  state 新模型字段（cur_id/cur_name/main_id/s_startup/cities_empty）
   - T3  搜索添加上海 → pill 选中 → 真实数据 + s_last_id 记忆
   - T4/T5  layout / theme toggle
@@ -17,6 +18,13 @@ Starts `auto run -r vm`, waits for UI MCP, then asserts:
   - T15 PLAN-009 城市表 e2e：冷启动种子 → 添加/选中/落盘 → 主城市排序 →
       启动偏好 last → 重启实证 → 删当前城回落 → 删空 → 再添加自动选中
       （T15 自带 vm 重启做状态卫生；settings/cities 落盘文本直读断言）
+  - T16 PLAN-010 添加城市面板：开合两路（面板 ✕ / ＋ toggle）→ 与设置卡
+      互斥 → 面板内添加即选中（cur/s_last_id/settings 落盘/add_open=false）→
+      重复添加不截断（R2 修复实证）
+
+PLAN-010 起搜索区由共享顶部迁入「＋」内联面板（header 后、pill 条前）：
+T3/T7/T8/T11/T13/T15 的搜索步骤统一经 open_add_panel() 开面板后驱动面板
+内 input（autoui_type 机制与主页 input 相同）→ 点「搜索」→ 点结果按钮。
 
 Usage:
   python vm_smoke.py
@@ -48,6 +56,9 @@ AUTO_BIN = os.environ.get("AUTO_BIN", str(_DEFAULT_BIN))
 
 # PLAN-009：后端 seed_cities 的北京种子城市 id（cities.json 持久化 id 契约）
 BJ_ID = "39.90_116.40"
+# PLAN-010/T16：Open-Meteo geocoding「青岛」首条命中 (39.32908,121.73279)，
+# latlon_2dp 截断 2dp → id（首条为辽宁大连辖内青岛，非山东青岛市）
+QD_ID = "39.32_121.73"
 _BOOT_SEQ = 0  # launch_vm 日志名序号（崩溃证据保留）
 
 
@@ -401,6 +412,60 @@ def settings_row_button(mcp: McpClient, city: str, btn: str) -> str | None:
     return ids[n + idx] if 0 <= n + idx < len(ids) else None
 
 
+def find_add_button(snapshot: str) -> str | None:
+    """header 右上「＋」按钮（全角 ＋ → ToggleAddCity，在 ⚙️ 之前）。
+    ⚙️/☀️/🌙 为 emoji 不冲突；空态 hint「点 ＋ 添加城市」的 ＋ 在 text
+    节点（无 onclick/button），clickable 查找不会命中——＋ 按钮唯一。"""
+    return find_smallest_clickable(snapshot, "＋")
+
+
+def panel_is_closed(snap: str) -> bool:
+    """面板关闭断言：zh/en 标题（添加城市/Add city）皆缺席。
+    注意：空表 hint「点 ＋ 添加城市」含「添加城市」子串——本断言仅在
+    非空表快照使用（套件各使用点均满足：断言时点结果已重灌城市表）。"""
+    return "添加城市" not in snap and "Add city" not in snap
+
+
+def wait_snap_contains(mcp: McpClient, needle: str, rounds: int = 8, delay: float = 0.5) -> str:
+    """有界重试等快照含 needle（出现时序 flake 防）；返回末次快照。"""
+    snap = ""
+    for _ in range(rounds):
+        snap = mcp.snapshot()
+        if needle in snap:
+            break
+        time.sleep(delay)
+    return snap
+
+
+def wait_snap_closed(mcp: McpClient, rounds: int = 6, delay: float = 0.5) -> str:
+    """有界重试等面板关闭（zh/en 标题皆缺席）；返回末次快照。"""
+    snap = mcp.snapshot()
+    for _ in range(rounds):
+        if panel_is_closed(snap):
+            break
+        time.sleep(delay)
+        snap = mcp.snapshot()
+    return snap
+
+
+def open_add_panel(mcp: McpClient, snap: str | None = None) -> str:
+    """点 header「＋」开添加城市面板；有界重试等面板标题（zh「添加城市」/
+    en「Add city」）出现在快照。返回面板打开态快照（供 find_input 等）；
+    ＋ 定位失败或标题未出现抛 RuntimeError。"""
+    if snap is None:
+        snap = mcp.snapshot()
+    bid = find_add_button(snap)
+    if not bid:
+        raise RuntimeError("add panel ＋ button not found")
+    mcp.click(bid)
+    for _ in range(10):
+        time.sleep(0.5)
+        snap = mcp.snapshot()
+        if "添加城市" in snap or "Add city" in snap:
+            return snap
+    raise RuntimeError("add panel title not observed after ＋ press")
+
+
 def main() -> int:
     # GBK 控制台打印含 ✓/emoji 的日志尾部会炸——统一容错编码
     try:
@@ -462,6 +527,14 @@ def main() -> int:
         # 冷启动种子 = 唯一有序表单城：★ 徽记全屏恰 1 处（删去任何多 pill 假设）
         n_star = snap.count("★")
         check(f"exactly one ★ pill (got {n_star})", n_star == 1)
+        # PLAN-010：搜索区迁入「＋」面板——主页（面板关）无 input/搜索按钮，
+        # ＋ 按钮存在（T16 依赖其开合）
+        check("T1 landmark: no input (panel closed)", find_input(snap) is None)
+        check(
+            "T1 landmark: no 搜索 button (panel closed)",
+            find_clickable_for_label(snap, "搜索") is None,
+        )
+        check("T1 landmark: ＋ add button present", find_add_button(snap) is not None)
         if len(snap) < 80:
             print(f"  WARN: snapshot very short ({len(snap)} chars)")
             print(snap[:500])
@@ -544,7 +617,9 @@ def main() -> int:
 
         print("\n=== T3 search/add/select 上海 (PLAN-009 city model) ===")
         try:
-            iid = find_input(snap)
+            # PLAN-010：搜索区迁入「＋」弹出面板——先开面板再驱动 input/搜索
+            pan = open_add_panel(mcp)
+            iid = find_input(pan)
             print(f"  input element: {iid}")
             if not iid:
                 raise RuntimeError("search input not found")
@@ -567,12 +642,23 @@ def main() -> int:
             print(f"  first hit element: {hid}")
             if not hid:
                 raise RuntimeError("no 上海 hit clickable")
-            mcp.click(hid)  # AddHit
+            mcp.click(hid)  # AddHit（添加即选中 + 自动关面板）
             time.sleep(3.0)
-            st_add = mcp.state("city_names")
+            snap_add = wait_snap_closed(mcp)
+            ok_closed = panel_is_closed(snap_add)
+            results.append(("AddHit closes panel (T3)", ok_closed))
+            print(f"  {'PASS' if ok_closed else 'FAIL'}: panel closed after add")
+            if not ok_closed:
+                failed += 1
+            st_add = mcp.state("city_names", "cur_id", "s_last_id")
             print(f"  after add: {st_add[:250]}")
-            ok_add = "上海" in st_add
-            results.append(("AddHit persists 上海 (city_names)", ok_add))
+            sh_id = field_value(st_add, "cur_id")
+            ok_add = (
+                "上海" in st_add
+                and sh_id not in (None, "")
+                and field_value(st_add, "s_last_id") == sh_id
+            )
+            results.append(("AddHit persists 上海 (city_names + auto-select)", ok_add))
             print(f"  {'PASS' if ok_add else 'FAIL'}: 上海 added")
             if not ok_add:
                 failed += 1
@@ -690,8 +776,9 @@ def main() -> int:
             stc = mcp.state("city_names")
             print(f"  city_names pre-state: {stc[:200]}")
 
-            snap = mcp.snapshot()
-            iid = find_input(snap)
+            # PLAN-010：搜索迁入「＋」面板——开面板 → input → 搜索 → 结果
+            pan = open_add_panel(mcp)
+            iid = find_input(pan)
             print(f"  input element: {iid}")
             if not iid:
                 raise RuntimeError("search input not found")
@@ -716,12 +803,23 @@ def main() -> int:
             print(f"  first hit element: {hid}")
             if not hid:
                 raise RuntimeError("no search hit clickable")
-            mcp.click(hid)  # AddHit
+            mcp.click(hid)  # AddHit（添加即选中 + 自动关面板）
             time.sleep(3.0)
-            st_add = mcp.state("city_names")
+            snap_add = wait_snap_closed(mcp)
+            ok_closed = panel_is_closed(snap_add)
+            results.append(("AddHit closes panel (T7)", ok_closed))
+            print(f"  {'PASS' if ok_closed else 'FAIL'}: panel closed after add")
+            if not ok_closed:
+                failed += 1
+            st_add = mcp.state("city_names", "cur_id", "s_last_id")
             print(f"  after add: {st_add[:250]}")
-            ok_add = "青岛" in st_add
-            results.append(("AddHit persists 青岛 (city_names)", ok_add))
+            qd_id = field_value(st_add, "cur_id")
+            ok_add = (
+                "青岛" in st_add
+                and qd_id not in (None, "")
+                and field_value(st_add, "s_last_id") == qd_id
+            )
+            results.append(("AddHit persists 青岛 (city_names + auto-select)", ok_add))
             print(f"  {'PASS' if ok_add else 'FAIL'}: 青岛 added")
             if not ok_add:
                 failed += 1
@@ -779,9 +877,11 @@ def main() -> int:
             if not ok_pm:
                 failed += 1
 
-            # ③ 搜索副标题（F-001）：搜索青岛 → 快照含"山东"
-            snap = mcp.snapshot()
-            iid = find_input(snap)
+            # ③ 搜索副标题（F-001）：搜索青岛 → 快照含"山东"（PLAN-010：面板内搜索）
+            pan = open_add_panel(mcp)
+            iid = find_input(pan)
+            if not iid:
+                raise RuntimeError("panel search input not found")
             mcp.call("autoui_type", element_id=iid, text="青岛")
             time.sleep(0.5)
             bid = find_clickable_for_label(mcp.snapshot(), "搜索")
@@ -794,7 +894,11 @@ def main() -> int:
             if not ok_sub:
                 failed += 1
 
-            # ④ 添加大连 → 其 ✕ 删除（青岛保留 = 定向删除实证）
+            # ④ 面板保持开（DoSearch 不关面板）→ 换词搜大连 → AddHit 添加并选中
+            # → 自动关面板 → 大连 ✕ 删除（青岛保留 = 定向删除实证）
+            iid = find_input(mcp.snapshot())
+            if not iid:
+                raise RuntimeError("panel search input not found (2nd query)")
             mcp.call("autoui_type", element_id=iid, text="大连")
             time.sleep(0.5)
             mcp.click(find_clickable_for_label(mcp.snapshot(), "搜索"))
@@ -804,8 +908,14 @@ def main() -> int:
             print(f"  大连 hit element: {hit}")
             if not hit:
                 raise RuntimeError("no 大连 hit clickable")
-            mcp.click(hit)
+            mcp.click(hit)  # AddHit（添加即选中 + 自动关面板）
             time.sleep(2.5)
+            snap_add = wait_snap_closed(mcp)
+            ok_closed = panel_is_closed(snap_add)
+            results.append(("AddHit closes panel (T8)", ok_closed))
+            print(f"  {'PASS' if ok_closed else 'FAIL'}: panel closed after add")
+            if not ok_closed:
+                failed += 1
             st_diag = mcp.state("search_err", "search_q", "search_ids", "city_ids", "city_names")
             print(f"  post-add diag: {st_diag[:700]}")
             st_add = mcp.state("city_names")
@@ -827,6 +937,14 @@ def main() -> int:
             print(f"  {'PASS' if ok_rm else 'FAIL'}: targeted removal")
             if not ok_rm:
                 failed += 1
+            # PLAN-010：AddHit 添加即选中 → 上面删的是当前城大连，删后回落
+            # 首城（北京，T15.7 契约）——重选青岛恢复 T10 前置（cur=青岛）
+            pid_qd = find_smallest_clickable(mcp.snapshot(), "青岛")
+            print(f"  re-select 青岛 pill: {pid_qd}")
+            if not pid_qd:
+                raise RuntimeError("no 青岛 pill clickable")
+            mcp.click(pid_qd)  # SelectCity(青岛)
+            time.sleep(4.0)
         except Exception as e:
             results.append(("T8 indices/pm/removal", False))
             print(f"  FAIL: T8 {e}")
@@ -969,18 +1087,35 @@ def main() -> int:
             if not ok_eff:
                 failed += 1
 
-            # 排序：↑↓ 仅存在于设置卡——保持卡打开；大连添加后卡内末行即大连。
-            # PLAN-009：custom_names → city_names；首位未变 → main_id 不变。
+            # 排序：↑↓ 仅存在于设置卡。PLAN-010：搜索迁入「＋」面板——开面板
+            # 互斥收起设置卡；AddHit 添加即选中并自动关面板 → 重开 ⚙️ 再排序。
+            # PLAN-009：首位未变 → main_id 不变。
             main_before = field_value(mcp.state("main_id"), "main_id")
             print(f"  main_id before move: {main_before}")
-            iid = find_input(mcp.snapshot())
+            pan = open_add_panel(mcp)  # 设置卡开 → ＋ 关设置卡、开面板
+            iid = find_input(pan)
+            if not iid:
+                raise RuntimeError("panel search input not found")
             mcp.call("autoui_type", element_id=iid, text="大连")
             time.sleep(0.5)
             mcp.click(find_clickable_for_label(mcp.snapshot(), "搜索"))
             time.sleep(4.0)
             hit = find_smallest_clickable(mcp.snapshot(), "大连")
-            mcp.click(hit)
+            if not hit:
+                raise RuntimeError("no 大连 hit clickable")
+            mcp.click(hit)  # AddHit（添加即选中 + 自动关面板）
             time.sleep(2.5)
+            snap_add = wait_snap_closed(mcp)
+            ok_closed = panel_is_closed(snap_add)
+            results.append(("AddHit closes panel (T11)", ok_closed))
+            print(f"  {'PASS' if ok_closed else 'FAIL'}: panel closed after add")
+            if not ok_closed:
+                failed += 1
+            gid2 = find_clickable_for_label(snap_add, "⚙️")
+            if not gid2:
+                raise RuntimeError("gear not found after add")
+            mcp.click(gid2)  # 重开设置卡（↑↓ 城市行在其中）
+            time.sleep(1.2)
             up_ids = find_all_clickables(mcp.snapshot(), "↑")
             print(f"  up buttons: {len(up_ids)}")
             if not up_ids:
@@ -1058,16 +1193,18 @@ def main() -> int:
             print(f"  {'PASS' if ok_en else 'FAIL'}: lang=en state")
             if not ok_en:
                 failed += 1
-            # ② 刷新：报文语言随数据面（首小时标签 Now + 界面 Settings/Search）
+            # ② 刷新：报文语言随数据面（首小时标签 Now + 界面 Settings）
             rfr = find_clickable_for_label(mcp.snapshot(), "Refresh")
             if not rfr:
                 raise RuntimeError("Refresh button not found")
             mcp.click(rfr)
             time.sleep(5.0)
             snap_en = mcp.snapshot()
-            ok_en_ui = "Settings" in snap_en and "Search" in snap_en
+            # PLAN-010：搜索面迁入「＋」面板——主页快照无 Search（面板关、
+            # 与设置卡互斥）；设置卡英化标题 Settings 仍在
+            ok_en_ui = "Settings" in snap_en
             ok_en_data = "Now" in snap_en
-            results.append(("en UI labels (Settings/Search)", ok_en_ui))
+            results.append(("en UI labels (Settings)", ok_en_ui))
             print(f"  {'PASS' if ok_en_ui else 'FAIL'}: en UI labels")
             if not ok_en_ui:
                 failed += 1
@@ -1075,8 +1212,25 @@ def main() -> int:
             print(f"  {'PASS' if ok_en_data else 'FAIL'}: en data label Now")
             if not ok_en_data:
                 failed += 1
-            # ③ 还原中文（跨运行卫生双保险）：刷新后快照含"设置"
-            zbtn = find_clickable_for_label(snap_en, "中文")
+            # ②b PLAN-010：搜索面英化——开「＋」面板断言标题 Add city + 按钮 Search
+            pan = open_add_panel(mcp)
+            ok_pen = "Add city" in pan and "Search" in pan
+            results.append(("en panel labels (Add city/Search)", ok_pen))
+            print(f"  {'PASS' if ok_pen else 'FAIL'}: en panel labels")
+            if not ok_pen:
+                failed += 1
+            pb = find_add_button(pan)
+            if not pb:
+                raise RuntimeError("＋ button not found to close panel")
+            mcp.click(pb)  # toggle 关面板
+            time.sleep(0.8)
+            # ③ 还原中文（跨运行卫生双保险）：重开设置卡 → 中文 → 刷新后「设置」
+            gid = find_clickable_for_label(mcp.snapshot(), "⚙️")
+            if not gid:
+                raise RuntimeError("gear not found")
+            mcp.click(gid)
+            time.sleep(1.0)
+            zbtn = find_clickable_for_label(mcp.snapshot(), "中文")
             if not zbtn:
                 raise RuntimeError("中文 button not found")
             mcp.click(zbtn)
@@ -1127,10 +1281,12 @@ def main() -> int:
             check("T15.1 cold seed", False)
             print(f"  FAIL: T15.1 {e}")
 
-        # ② 搜索青岛 → AddHit → 选中 pill → cur/s_last_id=青岛 id + 落盘
+        # ② 「＋」面板搜索青岛 → AddHit（添加即选中+关面板）→ 选中 pill →
+        #   cur/s_last_id=青岛 id + 落盘
         qd_id = None
         try:
-            iid = find_input(snap)
+            pan = open_add_panel(mcp)
+            iid = find_input(pan)
             if not iid:
                 raise RuntimeError("search input not found")
             mcp.call("autoui_type", element_id=iid, text="青岛")
@@ -1142,8 +1298,17 @@ def main() -> int:
                 raise RuntimeError("no 青岛 hit clickable")
             mcp.click(hit)  # AddHit
             time.sleep(3.0)
-            st_names = mcp.state("city_names")
-            check("T15.2 city_names contains 青岛", "青岛" in st_names)
+            snap_add = wait_snap_closed(mcp)
+            check("T15.2 panel closed after AddHit", panel_is_closed(snap_add))
+            st_names = mcp.state("city_names", "cur_id", "s_last_id")
+            print(f"  after add: {st_names[:250]}")
+            qd_id = field_value(st_names, "cur_id")
+            check(
+                "T15.2 city_names contains 青岛 + AddHit auto-selects (cur=s_last_id)",
+                "青岛" in st_names
+                and qd_id not in (None, "")
+                and field_value(st_names, "s_last_id") == qd_id,
+            )
             pid = find_smallest_clickable(mcp.snapshot(), "青岛")
             if not pid:
                 raise RuntimeError("no 青岛 pill clickable")
@@ -1329,10 +1494,13 @@ def main() -> int:
             snap8 = mcp.snapshot()
             print(f"  state: {st8[:120]}")
             check(
-                "T15.8 empty list (cities_empty=true + hint 搜索添加城市)",
-                "cities_empty: true" in st8 and "搜索添加城市" in snap8,
+                "T15.8 empty list (cities_empty=true + hint 点 ＋ 添加城市)",
+                "cities_empty: true" in st8 and "点 ＋ 添加城市" in snap8,
             )
-            iid = find_input(snap8)
+            # PLAN-010：搜索迁入「＋」面板（空态 hint 的 ＋ 在 text 节点无
+            # onclick，＋ 按钮定位仍唯一）
+            pan = open_add_panel(mcp)
+            iid = find_input(pan)
             if not iid:
                 raise RuntimeError("search input not found")
             mcp.call("autoui_type", element_id=iid, text="上海")
@@ -1342,8 +1510,10 @@ def main() -> int:
             hit = find_smallest_clickable(mcp.snapshot(), "上海")
             if not hit:
                 raise RuntimeError("no 上海 hit clickable")
-            mcp.click(hit)  # AddHit（空表 → 自动选中首城）
+            mcp.click(hit)  # AddHit（空表 → 自动选中首城 + 关面板）
             time.sleep(3.0)
+            snap9 = wait_snap_closed(mcp)
+            check("T15.8 panel closed after re-add", panel_is_closed(snap9))
             st9 = mcp.state("cur_name", "cities_empty")
             print(f"  state: {st9[:200]}")
             check(
@@ -1353,6 +1523,142 @@ def main() -> int:
         except Exception as e:
             check("T15.8 empty → re-add auto-select", False)
             print(f"  FAIL: T15.8 {e}")
+
+        # ==================== T16 PLAN-010 添加城市面板 ====================
+        print("\n=== T16 add-city panel (PLAN-010) ===")
+        # 进入态：T15.8 尾——设置卡开、城市 [上海]、cur=上海、lang=zh。
+        # 前序段落失败可能留下不同 UI 态：各步先防御性归位再断言。
+        wait_init_settled()  # T15.8 AddHit 取数落定，防 parked 期事件被吞
+
+        # ① 面板开合两路：＋ 开 → 面板 ✕ 关 → ＋ 再开 → ＋ toggle 关
+        try:
+            snap = open_add_panel(mcp)
+            check("T16.1 open panel via ＋ (title 添加城市)", "添加城市" in snap)
+            xids = find_all_clickables(snap, "✕")
+            print(f"  ✕ buttons while panel open: {len(xids)}")
+            if not xids:
+                raise RuntimeError("no ✕ button while panel open")
+            # 文档序第一个 ✕ = 面板 ✕（panel 在 pill 条前渲染；pill ✕
+            # 每城一个在后；设置卡 ✕ 更后）
+            mcp.click(xids[0])
+            time.sleep(0.8)
+            snap = mcp.snapshot()
+            check("T16.1 close panel via panel ✕", panel_is_closed(snap))
+            snap = open_add_panel(mcp)
+            check("T16.1 reopen panel via ＋", "添加城市" in snap)
+            bid = find_add_button(snap)
+            if not bid:
+                raise RuntimeError("＋ button not found for toggle close")
+            mcp.click(bid)  # 再点 ＋ = toggle 关
+            time.sleep(0.8)
+            snap = mcp.snapshot()
+            check("T16.1 close panel via ＋ toggle", panel_is_closed(snap))
+        except Exception as e:
+            check("T16.1 panel open/close (✕ + ＋ toggle)", False)
+            print(f"  FAIL: T16.1 {e}")
+
+        # ② 面板 ↔ 设置卡互斥（ToggleAddCity 开时收设置卡；ToggleSettings
+        #    开时收面板）
+        try:
+            gid = find_clickable_for_label(mcp.snapshot(), "⚙️")
+            if not gid:
+                raise RuntimeError("gear not found")
+            mcp.click(gid)  # 开设置卡
+            time.sleep(0.8)
+            snap = wait_snap_contains(mcp, "温度单位")
+            check("T16.2 settings card open (温度单位)", "温度单位" in snap)
+            snap = open_add_panel(mcp)  # ＋：关设置卡、开面板
+            ok_mx1 = "添加城市" in snap and "温度单位" not in snap
+            check("T16.2 mutex: ＋ closes settings, opens panel", ok_mx1)
+            gid = find_clickable_for_label(snap, "⚙️")
+            if not gid:
+                raise RuntimeError("gear not found (2nd)")
+            mcp.click(gid)  # ⚙️：关面板、开设置卡
+            snap = wait_snap_contains(mcp, "温度单位")
+            ok_mx2 = "温度单位" in snap and panel_is_closed(snap)
+            check("T16.2 mutex: ⚙️ closes panel, opens settings", ok_mx2)
+        except Exception as e:
+            check("T16.2 panel/settings mutex", False)
+            print(f"  FAIL: T16.2 {e}")
+
+        # ③ 添加即选中：面板内搜索青岛 → AddHit → 面板关 + cur/s_last_id +
+        #    settings.json 落盘 + add_open=false（state 直断言）
+        try:
+            snap = open_add_panel(mcp)
+            iid = find_input(snap)
+            if not iid:
+                raise RuntimeError("panel search input not found")
+            mcp.call("autoui_type", element_id=iid, text="青岛")
+            time.sleep(0.6)
+            mcp.click(find_clickable_for_label(mcp.snapshot(), "搜索"))
+            time.sleep(4.0)
+            hit = find_smallest_clickable(mcp.snapshot(), "青岛")
+            if not hit:
+                raise RuntimeError("no 青岛 hit clickable")
+            mcp.click(hit)  # AddHit（添加即选中 + 自动关面板）
+            time.sleep(3.0)
+            snap = wait_snap_closed(mcp)
+            check("T16.3 panel closed after AddHit", panel_is_closed(snap))
+            st = mcp.state("cur_id", "s_last_id", "add_open")
+            print(f"  state: {st[:240]}")
+            check(
+                f"T16.3 add-always-selects (cur_id=s_last_id={QD_ID}, add_open=false)",
+                f'cur_id: "{QD_ID}"' in st
+                and f's_last_id: "{QD_ID}"' in st
+                and "add_open: false" in st,
+            )
+            sj = read_persist("settings.json")
+            check(
+                f"T16.3 settings.json last_id={QD_ID}",
+                sj is not None and f'"last_id":"{QD_ID}"' in sj,
+            )
+        except Exception as e:
+            check("T16.3 add-always-selects", False)
+            print(f"  FAIL: T16.3 {e}")
+
+        # ④ 重复添加不截断（PLAN-009 R2 修复实证）：多城态下重搜已存在的
+        #    青岛 → AddHit → 面板关 + 选中青岛 + 全表不变（总数不变/无重复/
+        #    此前城市无丢失）
+        try:
+            names_pre = parse_city_names(mcp.state("city_names"))
+            n_pre = len(names_pre)
+            print(f"  city_names pre: {names_pre}")
+            snap = open_add_panel(mcp)
+            iid = find_input(snap)
+            if not iid:
+                raise RuntimeError("panel search input not found")
+            mcp.call("autoui_type", element_id=iid, text="青岛")
+            time.sleep(0.6)
+            mcp.click(find_clickable_for_label(mcp.snapshot(), "搜索"))
+            time.sleep(4.0)
+            hit = find_smallest_clickable(mcp.snapshot(), "青岛")
+            if not hit:
+                raise RuntimeError("no 青岛 hit clickable")
+            mcp.click(hit)  # 重复 AddHit（cities_add 判重返回全表）
+            time.sleep(3.0)
+            snap = wait_snap_closed(mcp)
+            check("T16.4 panel closed after duplicate add", panel_is_closed(snap))
+            st = mcp.state("cur_id", "city_names")
+            names_post = parse_city_names(st)
+            print(f"  city_names post: {names_post}")
+            check(
+                "T16.4 duplicate add selects 青岛, list intact "
+                "(count unchanged, no dup, prior cities kept)",
+                f'cur_id: "{QD_ID}"' in st
+                and len(names_post) == n_pre
+                and names_post.count("青岛") == 1
+                and all(nm in names_post for nm in names_pre),
+            )
+            cj = read_persist("cities.json")
+            check(
+                "T16.4 cities.json full list persisted (上海+青岛)",
+                cj is not None
+                and '"name":"上海"' in cj
+                and '"name":"青岛"' in cj,
+            )
+        except Exception as e:
+            check("T16.4 duplicate add no truncation", False)
+            print(f"  FAIL: T16.4 {e}")
 
     except Exception as e:
         # 顶层兜底：vm 进程崩溃等意外错误不得跳过 summary——每项 FAIL
