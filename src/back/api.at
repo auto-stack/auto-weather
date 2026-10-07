@@ -855,6 +855,7 @@ fn impl_cities_get() CityListOut {
 
 // 读旧表（缺失/损坏回灌种子）→ 判重 → 追加 → 重写 → 返回新表
 // （VG13：数组不出 fn，全就地；PLAN-009：首次添加时北京种子一并落盘）
+// 判重返回全表（PLAN-010 修 R2）：重复添加不重写文件
 fn impl_cities_add(id str, name str, lat str, lon str) CityListOut {
     var out CityListOut = CityListOut {
         ok: false,
@@ -864,6 +865,7 @@ fn impl_cities_add(id str, name str, lat str, lon str) CityListOut {
         lats: [],
         lons: []
     }
+    var dup bool = false
     let path str = cities_path()
     let raw str = cities_read_or_seed()
     let v = json.parse(raw)
@@ -877,12 +879,15 @@ fn impl_cities_add(id str, name str, lat str, lon str) CityListOut {
                 out.lats.push("" + c.lat)
                 out.lons.push("" + c.lon)
                 if cid == id {
-                    out.ok = true
-                    out.error = ""
-                    return out
+                    dup = true
                 }
             }
         }
+    }
+    if dup {
+        out.error = ""
+        out.ok = true
+        return out
     }
     out.ids.push(id)
     out.names.push(name)
