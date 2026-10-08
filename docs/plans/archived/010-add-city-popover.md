@@ -265,7 +265,14 @@ AutoLang .at widget（VM merged 主面 / Vue 轨 api_gen 桩随契约再生成�
     本 submodule（PLAN-007/009 收据同款先例）；
   - `archived`：`docs/plans/archived/010-add-city-popover.md`，
     `status: archived`、`completion_kind: delivered`；
-  - `cleaned`：见末节（清理完成后补记）。
+  - `cleaned`：全部分支提交已落地（`merge-base --is-ancestor plan-010-dev
+    v0.6-dev` ✓，删除时 tip = 17571d5）；worktree 零未提交；`wt-guard.sh`
+    本机缺位，以手工等价扫描代替（`find -type l` 零符号链接 +
+    PowerShell ReparsePoint 递归扫描零命中，移除前临场复扫）；
+    `git worktree remove` + `git branch -d plan-010-dev`（was 17571d5）+
+    组目录 `D:/autostack/.wt/weather-010` 已删；`git worktree list` 实证
+    仅剩主检出（97b342f [v0.6-dev]）与在途 weather-008。清理完成，收据
+    闭环。
 
 ## 10. 待澄清事项
 
