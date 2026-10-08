@@ -1162,7 +1162,9 @@ def main() -> int:
             print(f"  {'PASS' if ok_qw else 'FAIL'}: {tag}")
             if not ok_qw:
                 failed += 1
-            ok_lv = ("优" in st_s) or ("良" in st_s) or ("—" in st_s)
+            # 全量六级 + 软失败 "—"（PLAN-010 merge 门修复：原 优/良/— 白名单
+            # 在真实空气劣化（如轻度污染）时误红——北京实测 2026-10-08 AQI 170+）
+            ok_lv = any(lv in st_s for lv in ("优", "良", "轻度污染", "中度污染", "重度污染", "严重污染", "—"))
             results.append(("aqi level readable", ok_lv))
             print(f"  {'PASS' if ok_lv else 'FAIL'}: aqi level")
             if not ok_lv:
