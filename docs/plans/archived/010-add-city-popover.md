@@ -1,6 +1,7 @@
 ---
 plan_id: PLAN-010
-status: reviewed
+status: archived
+completion_kind: delivered
 feature_name: 添加城市弹出面板（＋按钮入口，添加即选中）
 author: [agent]
 created_at: 2026-10-06T00:00:00Z
@@ -243,6 +244,28 @@ AutoLang .at widget（VM merged 主面 / Vue 轨 api_gen 桩随契约再生成�
   志；src diff 逐面人工核对（面板构型/AddHit 新语义/Toggle 互斥/判重全表/
   i18n 四处）| next: merge`。局限声明：复审与实施同会话，结论以 git 产物
   + 两轮独立复跑重建，未依赖实施 agent 总结。
+- **PLAN-010:r1 merge 收据**
+  - `prepared`：复审基线 rev 1 / reviewed 8f15a55 / base 8340a95 / 冻结
+    delta SD-01/02（@1053e6a）；
+  - `landed`：plan-010-dev rebase 至 v0.6-dev 7923d92（无冲突）→
+    旧→新 fe2cd3b→f8fe05c / 950cf77→ac036a9 / 1053e6a→b3bb4fa /
+    8f15a55→7b65fff；`git range-diff 8340a95..8f15a55 7923d92..HEAD`
+    4/4 全 `=`；主检出 `git merge --ff-only plan-010-dev` → v0.6-dev
+    tip = 7b65fff…（delivery commit），无合并提交；**主检出落地冒烟
+    92/92 中 T12「aqi level readable」红——根因为预存测试缺陷（与本
+    计划变更面无关）：断言白名单仅 优/良/—，当日北京真实 AQI 等级为
+    「轻度污染」（api.at 六级制），app 行为正确而断言误红**；按 merge
+    门修复惯例做最小修复 `17571d5`（tests/vm_smoke.py 一条断言扩为
+    六级全量+软失败符 + 注释，**实现/依赖零改动**），worktree 验证全量
+    **92/92 exit 0**（/tmp/plan010-fix-verify.log）后二次
+    `git merge --ff-only plan-010-dev` → **最终 v0.6-dev tip =
+    17571d565c8ab99832fdbcf2aba15ad1036c07f6**，无合并提交；显著披露：
+    该修复属被审 delta 之外的测试加固，随落地折叠并在此留证；
+  - `ledger_refreshed`：**N/A**——auto-os 父仓 `.autoos/specs.json` 未登记
+    本 submodule（PLAN-007/009 收据同款先例）；
+  - `archived`：`docs/plans/archived/010-add-city-popover.md`，
+    `status: archived`、`completion_kind: delivered`；
+  - `cleaned`：见末节（清理完成后补记）。
 
 ## 10. 待澄清事项
 
